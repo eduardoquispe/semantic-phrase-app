@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: Semantic Phrase App API
+  version: 1.0.0
+  description: |
+    Contrato REST del MVP local de validación semántica de frases. La coincidencia
+    potencial es un resultado de negocio exitoso, no un error HTTP. El token de
+    validación permite registrar una frase previamente validada; no autentica usuarios.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: API local NestJS
+tags:
+  - name: Phrases
+    description: Consulta y registro de frases
+  - name: PhraseValidations
+    description: Validación previa y generación de comprobante temporal
+paths:
+  /phrases:
+    get:
+      tags: [Phrases]
+      operationId: listPhrases
+      summary: Listar frases registradas
+      description: Orden fijo por fecha de creación descendente e ID descendente. No incluye embeddings.
+      parameters:
+        - name: page
+          in: query
+          description: Página basada en uno.
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          description: Tamaño de página.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Listado paginado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhraseListEnvelope' }
+              examples:
+                populated:
+                  value:
+                    data:
+                      - id: 123e4567-e89b-42d3-a456-426614174000
+                        text: Me gusta viajar a Cusco
+                        createdAt: '2026-10-21T19:02:00Z'
+                    meta: { page: 1, limit: 20, total: 1, totalPages: 1 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DatabaseUnavailable' }
+    post:
+      tags: [Phrases]
+      operationId: createPhrase
+      summary: Registrar frase validada
+      description: |
+        Comprueba token firmado, frase asociada, vigencia y consumo; exige confirmed=true
+        solo cuando la validación almacenada requiere HITL. Inserción y consumo son
+        atómicos. No recalcula el embedding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePhraseRequest' }
+            examples:
+              withConfirmation:
+                value:
+                  text: Me gusta viajar a Cusco
+                  validationToken: '<signed-jwt>'
+                  confirmed: true
+              withoutMatch:
+                value:
+                  text: Me gusta viajar a Cusco
+                  validationToken: '<signed-jwt>'
+      responses:
+        '201':
+          description: Frase creada; validación consumida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhraseEnvelope' }
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 123e4567-e89b-42d3-a456-426614174000
+                      text: Me gusta viajar a Cusco
+                      createdAt: '2026-10-21T19:02:00Z'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DatabaseUnavailable' }
+  /phrase-validations:
+    post:
+      tags: [PhraseValidations]
+      operationId: validatePhrase
+      summary: Validar una frase antes del registro
+      description: |
+        Genera embedding mediante MiniLM local, prioriza coincidencia textual normalizada
+        y, si no existe, consulta Top-1 exacto por similitud coseno. Persiste la
+        validación temporal y emite un JWT con vigencia inicial de 15 minutos.
+        Un posible duplicado no constituye un error HTTP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ValidatePhraseRequest' }
+            examples:
+              input:
+                value: { text: Me gusta viajar a Cusco }
+      responses:
+        '201':
+          description: Validación temporal creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhraseValidationEnvelope' }
+              examples:
+                vectorMatch:
+                  summary: Coincidencia vectorial
+                  value:
+                    data:
+                      validationToken: '<signed-jwt>'
+                      expiresAt: '2026-10-21T19:15:00Z'
+                      requiresConfirmation: true
+                      match:
+                        type: vector
+                        phrase: { id: 123e4567-e89b-42d3-a456-426614174000, text: Me encanta viajar a Cusco }
+                        similarityScore: 0.92
+                exactMatch:
+                  summary: Coincidencia textual normalizada
+                  value:
+                    data:
+                      validationToken: '<signed-jwt>'
+                      expiresAt: '2026-10-21T19:15:00Z'
+                      requiresConfirmation: true
+                      match:
+                        type: textual_exact
+                        phrase: { id: 123e4567-e89b-42d3-a456-426614174000, text: Me gusta viajar a Cusco }
+                        similarityScore: null
+                noMatch:
+                  summary: Sin candidata
+                  value:
+                    data:
+                      validationToken: '<signed-jwt>'
+                      expiresAt: '2026-10-21T19:15:00Z'
+                      requiresConfirmation: false
+                      match: null
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+components:
+  schemas:
+    PhraseText:
+      type: string
+      minLength: 1
+      maxLength: 500
+      description: |
+        Longitud de 1 a 500 puntos de código Unicode; después de trim no debe quedar
+        vacío. Rechazar caracteres de control no permitidos. El contrato OpenAPI
+        maxLength expresa longitud de cadena; la implementación debe comprobar
+        explícitamente los puntos de código Unicode y el texto después de trim.
+      examples: [Me gusta viajar a Cusco]
+    Phrase:
+      type: object
+      additionalProperties: false
+      required: [id, text, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
+    MatchedPhrase:
+      type: object
+      additionalProperties: false
+      required: [id, text]
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+    VectorMatch:
+      type: object
+      additionalProperties: false
+      required: [type, phrase, similarityScore]
+      properties:
+        type: { type: string, const: vector }
+        phrase: { $ref: '#/components/schemas/MatchedPhrase' }
+        similarityScore:
+          type: number
+          minimum: -1
+          maximum: 1
+          description: Similitud coseno, no probabilidad; puede tomar valores negativos.
+    TextualExactMatch:
+      type: object
+      additionalProperties: false
+      required: [type, phrase, similarityScore]
+      properties:
+        type: { type: string, const: textual_exact }
+        phrase: { $ref: '#/components/schemas/MatchedPhrase' }
+        similarityScore: { type: 'null', description: No se inventa similitud coseno para igualdad textual. }
+    PhraseMatch:
+      oneOf:
+        - $ref: '#/components/schemas/VectorMatch'
+        - $ref: '#/components/schemas/TextualExactMatch'
+      discriminator:
+        propertyName: type
+        mapping:
+          vector: '#/components/schemas/VectorMatch'
+          textual_exact: '#/components/schemas/TextualExactMatch'
+    ValidatePhraseRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { $ref: '#/components/schemas/PhraseText' }
+    CreatePhraseRequest:
+      type: object
+      additionalProperties: false
+      required: [text, validationToken]
+      properties:
+        text: { $ref: '#/components/schemas/PhraseText' }
+        validationToken:
+          type: string
+          minLength: 1
+          description: JWT firmado HS256 de propósito phrase-registration. No es un token de autenticación.
+        confirmed:
+          type: boolean
+          default: false
+          description: Omitido equivale a false; true es obligatorio para coincidencias que requieren confirmación.
+    PhraseEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Phrase' }
+    PhraseValidationResult:
+      type: object
+      additionalProperties: false
+      required: [validationToken, expiresAt, requiresConfirmation, match]
+      properties:
+        validationToken: { type: string, minLength: 1, description: JWT temporal firmado, no credencial de sesión. }
+        expiresAt: { type: string, format: date-time }
+        requiresConfirmation: { type: boolean }
+        match:
+          oneOf:
+            - $ref: '#/components/schemas/PhraseMatch'
+            - type: 'null'
+          description: Nulo si no hay candidata. Igualdad textual implica confirmación.
+    PhraseValidationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/PhraseValidationResult' }
+    PageMeta:
+      type: object
+      additionalProperties: false
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0, description: 0 para colección vacía. }
+    PhraseListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Phrase' } }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field: { type: string }
+        message: { type: string }
+    ProblemDetails:
+      type: object
+      description: |
+        Subconjunto RFC 9457. Se omite type (equivale a about:blank).
+        code es extensión de la API; errors opcional para validación por campo.
+      additionalProperties: false
+      required: [title, status, detail, code]
+      properties:
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_VALIDATION_TOKEN
+            - PHRASE_MISMATCH
+            - VALIDATION_EXPIRED
+            - VALIDATION_ALREADY_USED
+            - CONFIRMATION_REQUIRED
+            - RATE_LIMIT_EXCEEDED
+            - INTERNAL_ERROR
+            - AI_UNAVAILABLE
+            - DATABASE_UNAVAILABLE
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/FieldError' }
+  responses:
+    BadRequest:
+      description: DTO o parámetros inválidos, token inválido o texto no correspondiente a la validación
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            title: Bad Request
+            status: 400
+            detail: Los datos enviados no son válidos
+            code: VALIDATION_ERROR
+            errors: [{ field: text, message: Máximo 500 caracteres }]
+    Conflict:
+      description: Validación expirada, consumida o que exige confirmación
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            title: Conflict
+            status: 409
+            detail: La validación expiró. Valida nuevamente la frase.
+            code: VALIDATION_EXPIRED
+    TooManyRequests:
+      description: Se excedió el límite global de 60 solicitudes por minuto por IP
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            title: Too Many Requests
+            status: 429
+            detail: Has realizado demasiadas solicitudes. Inténtalo nuevamente más tarde.
+            code: RATE_LIMIT_EXCEEDED
+    InternalError:
+      description: Fallo interno inesperado sin filtración de información sensible
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { title: Internal Server Error, status: 500, detail: Se produjo un error inesperado., code: INTERNAL_ERROR }
+    ServiceUnavailable:
+      description: IA o base de datos no disponible
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { title: Service Unavailable, status: 503, detail: El servicio de IA no está disponible., code: AI_UNAVAILABLE }
+    DatabaseUnavailable:
+      description: Persistencia no disponible
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { title: Service Unavailable, status: 503, detail: La persistencia no está disponible., code: DATABASE_UNAVAILABLE }
