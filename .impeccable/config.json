@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "prototypes/ui/index.html"
+        ],
+        "createdAt": "2026-10-21T14:39:29.437Z",
+        "reason": "Agent: detector reads Tailwind Play CDN utility sizes as default 16px; headings explicitly use text-4xl, text-3xl, and text-lg"
+      }
+    ]
+  }
+}
