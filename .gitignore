@@ -8,6 +8,8 @@ coverage/
 !.env.example
 
 .DS_Store
+.impeccable/hook.cache.json
+premium-audit.json
 
 experiments/semantic-similarity/results/*
 !experiments/semantic-similarity/results/.gitkeep
