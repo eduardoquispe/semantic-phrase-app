@@ -1,0 +1,6 @@
+[submodule "apps/frontend"]
+	path = apps/frontend
+	url = https://github.com/eduardoquispe/semantic-phrase-frontend.git
+[submodule "apps/backend"]
+	path = apps/backend
+	url = https://github.com/eduardoquispe/semantic-phrase-backend.git
