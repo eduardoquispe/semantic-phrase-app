@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "partition": "holdout",
+  "status": "approved",
+  "pairs": [
+    {
+      "id": "hold-s-01",
+      "family": "bicycle-flat-tire",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "La bicicleta tiene una llanta pinchada.",
+      "textB": "Se desinfló una rueda de mi bici por una perforación.",
+      "rationale": "Ambas describen una rueda perforada en la bicicleta."
+    },
+    {
+      "id": "hold-s-02",
+      "family": "library-return",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Tengo que devolver el libro a la biblioteca hoy.",
+      "textB": "Hoy debo regresar a la biblioteca el libro prestado.",
+      "rationale": "La devolución, el objeto y el plazo coinciden."
+    },
+    {
+      "id": "hold-s-03",
+      "family": "theater-tickets",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Compré dos entradas para la obra de teatro.",
+      "textB": "Adquirí un par de boletos para la función teatral.",
+      "rationale": "Expresan la compra de dos accesos para el mismo tipo de evento."
+    },
+    {
+      "id": "hold-s-04",
+      "family": "dry-plant",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "La planta del balcón necesita agua.",
+      "textB": "Hay que regar la maceta de afuera porque la tierra está seca.",
+      "rationale": "Ambas señalan que la planta exterior necesita riego."
+    },
+    {
+      "id": "hold-s-05",
+      "family": "passport-expiration",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Mi pasaporte vence el próximo mes.",
+      "textB": "El mes que viene caducará mi pasaporte.",
+      "rationale": "Documento, evento y periodo son equivalentes."
+    },
+    {
+      "id": "hold-s-06",
+      "family": "refrigerator-noise",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "El refrigerador hace un ruido extraño.",
+      "textB": "La nevera está produciendo un sonido inusual.",
+      "rationale": "Ambas reportan el mismo síntoma del electrodoméstico."
+    },
+    {
+      "id": "hold-s-07",
+      "family": "dentist-confirmation",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Confirma mi consulta con el dentista para el jueves.",
+      "textB": "Para el jueves, confirma que asistiré a la cita dental.",
+      "rationale": "Solicitan confirmar la misma clase de cita en el mismo día."
+    },
+    {
+      "id": "hold-s-08",
+      "family": "salary-deposit",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "Todavía no depositaron mi sueldo.",
+      "textB": "El pago mensual de mi trabajo aún no aparece en mi cuenta.",
+      "rationale": "Las dos frases indican que el salario no ha sido abonado."
+    },
+    {
+      "id": "hold-s-09",
+      "family": "address-accent",
+      "category": "accent_punctuation",
+      "label": "similar",
+      "textA": "Actualiza mi dirección de envío, por favor.",
+      "textB": "Por favor actualiza mi direccion de envío",
+      "rationale": "La variación de tilde, puntuación y orden no cambia la solicitud."
+    },
+    {
+      "id": "hold-s-10",
+      "family": "laundry-pickup",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Recoge la ropa de la lavandería esta tarde.",
+      "textB": "Pasa por la tintorería en la tarde para retirar las prendas.",
+      "rationale": "Ambas piden retirar ropa del servicio de lavado por la tarde."
+    },
+    {
+      "id": "hold-n-01",
+      "family": "elevator-operation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El ascensor está funcionando.",
+      "textB": "El ascensor no está funcionando.",
+      "rationale": "Las frases afirman estados opuestos."
+    },
+    {
+      "id": "hold-n-02",
+      "family": "scholarship-percentage",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "Me concedieron una beca del veinte por ciento.",
+      "textB": "Me concedieron una beca del ochenta por ciento.",
+      "rationale": "El porcentaje concedido es materialmente diferente."
+    },
+    {
+      "id": "hold-n-03",
+      "family": "football-winner",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "Perú ganó el partido contra Chile.",
+      "textB": "Chile ganó el partido contra Perú.",
+      "rationale": "Cambiar el ganador invierte el hecho comunicado."
+    },
+    {
+      "id": "hold-n-04",
+      "family": "microphone-control",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "Activa el micrófono durante la llamada.",
+      "textB": "Desactiva el micrófono durante la llamada.",
+      "rationale": "Solo cambia el verbo, pero las instrucciones son contrarias."
+    },
+    {
+      "id": "hold-n-05",
+      "family": "concert-actions",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "Busca entradas disponibles para el concierto.",
+      "textB": "Busca cómo llegar al lugar del concierto.",
+      "rationale": "Comparten evento, pero una busca entradas y la otra indicaciones."
+    },
+    {
+      "id": "hold-n-06",
+      "family": "freezer-state",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "La puerta del congelador está bien cerrada.",
+      "textB": "La puerta del congelador no está bien cerrada.",
+      "rationale": "La negación cambia el estado relevante de la puerta."
+    },
+    {
+      "id": "hold-n-07",
+      "family": "bus-time",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "El autobús parte a las seis de la mañana.",
+      "textB": "El autobús parte a las nueve de la mañana.",
+      "rationale": "La hora de salida es diferente."
+    },
+    {
+      "id": "hold-n-08",
+      "family": "key-owner",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "Lucía tiene la llave de la oficina.",
+      "textB": "Miguel tiene la llave de la oficina.",
+      "rationale": "La persona que posee la llave cambia."
+    },
+    {
+      "id": "hold-n-09",
+      "family": "photo-permission",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "Puedes publicar las fotografías del evento.",
+      "textB": "No puedes publicar las fotografías del evento.",
+      "rationale": "La segunda frase revoca el permiso concedido por la primera."
+    },
+    {
+      "id": "hold-n-10",
+      "family": "garden-actions",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "Compra semillas nuevas para el jardín.",
+      "textB": "Retira las hojas secas del jardín.",
+      "rationale": "El lugar coincide, pero son tareas independientes."
+    }
+  ]
+}

@@ -114,7 +114,7 @@ Este experimento no responde:
 
 - Qué modelo separa mejor duplicados semánticos de frases relacionadas.
 - Qué umbral debe utilizarse.
-- Si se alcanza al menos 80 % de accuracy sobre el holdout.
+- Si se alcanza el mínimo de accuracy sobre el holdout (80 % al redactar este reporte; 75 % vigente por DEC-019 del Product Brief).
 - Cuáles son los falsos positivos y falsos negativos relevantes.
 - Si JavaScript y pgvector producen resultados equivalentes.
 - Cuál es la latencia del flujo completo o bajo concurrencia.

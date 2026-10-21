@@ -32,7 +32,7 @@ La fase debe producir evidencia para responder:
 6. ¿El consumo de memoria, el tamaño del modelo y el tiempo de arranque son razonables para el MVP?
 7. ¿Conviene ejecutar la inferencia localmente en Node.js o consumir un servicio externo?
 
-La exactitud mínima del 80 % sobre al menos 20 pares, exigida por `SC-003`, será un criterio de aceptación. Sin embargo, 20 pares no son suficientes para seleccionar de manera confiable un umbral.
+La exactitud mínima vigente es 75 % sobre al menos 20 pares equilibrados, conforme a `SC-003` y `DEC-019` del Product Brief. Sin embargo, 20 pares no son suficientes para seleccionar de manera confiable un umbral.
 
 ## 3. Modelos candidatos iniciales
 
@@ -127,7 +127,7 @@ Métricas:
 - Margen entre casos similares y no similares.
 - Umbral elegido y sensibilidad a pequeñas variaciones.
 
-Además del 80 % de accuracy obligatorio, se priorizará el recall de duplicados: un falso negativo permite guardar automáticamente un duplicado, mientras que un falso positivo activa la revisión HITL. No se maximizará recall sin límite, porque demasiadas advertencias degradarían la utilidad del sistema.
+Además del mínimo vigente de 75 % de accuracy, se priorizará el recall de duplicados: un falso negativo puede permitir guardar un duplicado si el usuario pulsa **Guardar** después de validar, mientras que un falso positivo activa la revisión HITL. No se maximizará recall sin límite, porque demasiadas advertencias degradarían la utilidad del sistema.
 
 ### 5.3 Experimento 3 — Persistencia y búsqueda con pgvector
 

@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "partition": "calibration",
+  "status": "approved",
+  "pairs": [
+    {
+      "id": "v2-cal-s-01",
+      "family": "v2-medical-appointment-date",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "La consulta de pediatría quedó para el martes.",
+      "textB": "La consulta de pediatría quedó para el jueves.",
+      "rationale": "Es la misma clase de cita; el día puede ser una corrección que conviene revisar."
+    },
+    {
+      "id": "v2-cal-s-02",
+      "family": "v2-memo-recipient",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Envía el memorando de ventas a Daniela.",
+      "textB": "Envía el memorando de ventas a Patricia.",
+      "rationale": "La solicitud de enviar el mismo memorando conserva la acción y cambia el destinatario."
+    },
+    {
+      "id": "v2-cal-s-03",
+      "family": "v2-notebook-order-count",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Necesito comprar cuatro cuadernos para la oficina.",
+      "textB": "Necesito comprar cinco cuadernos para la oficina.",
+      "rationale": "La orden es casi la misma y solo varía la cantidad solicitada."
+    },
+    {
+      "id": "v2-cal-s-04",
+      "family": "v2-parcel-delivery-day",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "El paquete de la tienda llegará el lunes.",
+      "textB": "El paquete de la tienda llegará el miércoles.",
+      "rationale": "Se refiere a la misma entrega posible con una fecha distinta."
+    },
+    {
+      "id": "v2-cal-s-05",
+      "family": "v2-hotel-booking-city",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Reserva una habitación para el viaje a Lima.",
+      "textB": "Reserva una habitación para el viaje a Trujillo.",
+      "rationale": "La solicitud de reserva conserva la intención y cambia un detalle del destino."
+    },
+    {
+      "id": "v2-cal-s-06",
+      "family": "v2-supplier-transfer-amount",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Transfiere 250 soles al proveedor del evento.",
+      "textB": "Transfiere 280 soles al proveedor del evento.",
+      "rationale": "La transferencia solicitada conserva el destinatario y difiere en el importe."
+    },
+    {
+      "id": "v2-cal-s-07",
+      "family": "v2-forgot-access-code",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "Olvidé el código de acceso de mi cuenta.",
+      "textB": "No recuerdo la clave para entrar a mi perfil.",
+      "rationale": "Ambas frases piden resolver la pérdida de acceso a la misma clase de cuenta."
+    },
+    {
+      "id": "v2-cal-s-08",
+      "family": "v2-shipping-status",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Quiero saber dónde está mi envío.",
+      "textB": "Necesito consultar la ubicación actual de mi paquete.",
+      "rationale": "Ambas solicitan conocer el estado del envío."
+    },
+    {
+      "id": "v2-cal-s-09",
+      "family": "v2-bike-repair",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "Debo arreglar el freno de mi bicicleta.",
+      "textB": "El freno de la bici necesita reparación.",
+      "rationale": "Describen la misma reparación pendiente."
+    },
+    {
+      "id": "v2-cal-s-10",
+      "family": "v2-daily-report",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Hay que entregar el reporte diario al supervisor.",
+      "textB": "Al supervisor hay que entregarle el informe de cada día.",
+      "rationale": "El entregable y la persona receptora se mantienen."
+    },
+    {
+      "id": "v2-cal-s-11",
+      "family": "v2-parking-permit",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Solicité el permiso para estacionar.",
+      "textB": "Tengo solicitada la autorización de estacionamiento.",
+      "rationale": "Describen la misma gestión de permiso."
+    },
+    {
+      "id": "v2-cal-s-12",
+      "family": "v2-cafe-address",
+      "category": "accent_punctuation",
+      "label": "similar",
+      "textA": "¿Cuál es la dirección del café?",
+      "textB": "Cual es la direccion del cafe",
+      "rationale": "La ausencia de tildes y signos no cambia la consulta."
+    },
+    {
+      "id": "v2-cal-s-13",
+      "family": "v2-air-conditioner-failure",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "El aire acondicionado dejó de enfriar la habitación.",
+      "textB": "Hace calor en el cuarto porque el climatizador no funciona.",
+      "rationale": "Ambas describen una falla de climatización en la habitación."
+    },
+    {
+      "id": "v2-cal-s-14",
+      "family": "v2-project-task",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Tengo que revisar el documento del proyecto.",
+      "textB": "Debo repasar el archivo del trabajo.",
+      "rationale": "La tarea principal es revisar el mismo tipo de documento."
+    },
+    {
+      "id": "v2-cal-s-15",
+      "family": "v2-empty-printer",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "La impresora se quedó sin tinta negra.",
+      "textB": "Hay que cambiar el cartucho negro de la impresora.",
+      "rationale": "Ambas aluden al mismo problema de tinta."
+    },
+    {
+      "id": "v2-cal-s-16",
+      "family": "v2-appointment-hour",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "La reunión con soporte empieza a las nueve.",
+      "textB": "La reunión con soporte empieza a las diez.",
+      "rationale": "Puede ser una actualización de la hora de la misma reunión."
+    },
+    {
+      "id": "v2-cal-s-17",
+      "family": "v2-client-contact",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Llama a la clienta Valeria por el contrato.",
+      "textB": "Llama a la clienta Camila por el contrato.",
+      "rationale": "La gestión del contrato y la acción coinciden; cambia el nombre de contacto."
+    },
+    {
+      "id": "v2-cal-s-18",
+      "family": "v2-meeting-room",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "La capacitación será en la sala A.",
+      "textB": "La capacitación será en la sala B.",
+      "rationale": "La capacitación parece la misma y la sala podría haberse corregido."
+    },
+    {
+      "id": "v2-cal-s-19",
+      "family": "v2-water-bill-reminder",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Recuérdame pagar el recibo de agua mañana.",
+      "textB": "Mañana avísame que debo cancelar la cuenta del agua.",
+      "rationale": "Ambas solicitan el mismo recordatorio de pago."
+    },
+    {
+      "id": "v2-cal-s-20",
+      "family": "v2-subscription-end",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Quiero cancelar mi suscripción a la revista.",
+      "textB": "Deseo dar de baja la membresía de la publicación.",
+      "rationale": "Ambas solicitan finalizar la suscripción."
+    },
+    {
+      "id": "v2-cal-n-01",
+      "family": "v2-window-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Abre la ventana del salón.",
+      "textB": "Cierra la ventana del salón.",
+      "rationale": "Las instrucciones sobre la ventana son contrarias."
+    },
+    {
+      "id": "v2-cal-n-02",
+      "family": "v2-file-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Publica el archivo del informe.",
+      "textB": "Retira el archivo del informe publicado.",
+      "rationale": "Publicar y retirar el archivo son acciones opuestas."
+    },
+    {
+      "id": "v2-cal-n-03",
+      "family": "v2-alarm-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Activa la alarma del edificio.",
+      "textB": "Desactiva la alarma del edificio.",
+      "rationale": "Las acciones solicitadas invierten el estado de la alarma."
+    },
+    {
+      "id": "v2-cal-n-04",
+      "family": "v2-reservation-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Confirma la reserva del restaurante.",
+      "textB": "Cancela la reserva del restaurante.",
+      "rationale": "Confirmar y cancelar la reserva son objetivos contrarios."
+    },
+    {
+      "id": "v2-cal-n-05",
+      "family": "v2-order-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El pedido ya fue enviado.",
+      "textB": "El pedido todavía no fue enviado.",
+      "rationale": "Las frases afirman estados incompatibles del envío."
+    },
+    {
+      "id": "v2-cal-n-06",
+      "family": "v2-invoice-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "La factura está pagada.",
+      "textB": "La factura no está pagada.",
+      "rationale": "La negación invierte el estado de pago."
+    },
+    {
+      "id": "v2-cal-n-07",
+      "family": "v2-door-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "La puerta del almacén está cerrada.",
+      "textB": "La puerta del almacén no está cerrada.",
+      "rationale": "Se describen estados contrarios de la puerta."
+    },
+    {
+      "id": "v2-cal-n-08",
+      "family": "v2-approval-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El presupuesto fue aprobado.",
+      "textB": "El presupuesto no fue aprobado.",
+      "rationale": "La aprobación y su negación comunican hechos opuestos."
+    },
+    {
+      "id": "v2-cal-n-09",
+      "family": "v2-card-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Consulta el saldo de la tarjeta.",
+      "textB": "Bloquea la tarjeta porque se perdió.",
+      "rationale": "Consultar un saldo y bloquear una tarjeta son gestiones diferentes."
+    },
+    {
+      "id": "v2-cal-n-10",
+      "family": "v2-course-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Inscríbeme en el curso de fotografía.",
+      "textB": "Envíame el temario del curso de fotografía.",
+      "rationale": "Una frase solicita inscripción y la otra solo información."
+    },
+    {
+      "id": "v2-cal-n-11",
+      "family": "v2-restaurant-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Reserva una mesa en el restaurante.",
+      "textB": "Consulta el horario del restaurante.",
+      "rationale": "Reservar y consultar horarios son tareas distintas."
+    },
+    {
+      "id": "v2-cal-n-12",
+      "family": "v2-parcel-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Rastrea el envío de mi paquete.",
+      "textB": "Solicita una devolución del paquete.",
+      "rationale": "Seguir el envío y tramitar una devolución tienen fines distintos."
+    },
+    {
+      "id": "v2-cal-n-13",
+      "family": "v2-salary-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Descarga mi boleta de pago.",
+      "textB": "Corrige mi cuenta bancaria para el pago.",
+      "rationale": "Se trata de operaciones diferentes relacionadas con la nómina."
+    },
+    {
+      "id": "v2-cal-n-14",
+      "family": "v2-meeting-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Envíame la agenda de la reunión.",
+      "textB": "Cancela la sala reservada para la reunión.",
+      "rationale": "Solicitar una agenda y cancelar una sala no son la misma gestión."
+    },
+    {
+      "id": "v2-cal-n-15",
+      "family": "v2-flight-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Muéstrame el estado de mi vuelo.",
+      "textB": "Compra equipaje adicional para mi vuelo.",
+      "rationale": "Consultar un estado y comprar equipaje son solicitudes distintas."
+    },
+    {
+      "id": "v2-cal-n-16",
+      "family": "v2-house-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Pide una cotización para pintar la casa.",
+      "textB": "Programa la inspección eléctrica de la casa.",
+      "rationale": "Comparten lugar, pero el trabajo solicitado cambia."
+    },
+    {
+      "id": "v2-cal-n-17",
+      "family": "v2-office-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Limpia el teclado de la computadora.",
+      "textB": "Compra un teclado nuevo para la computadora.",
+      "rationale": "Limpiar el teclado y comprar uno nuevo son gestiones distintas."
+    },
+    {
+      "id": "v2-cal-n-18",
+      "family": "v2-document-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Firma el contrato de alquiler.",
+      "textB": "Consulta cuándo termina el contrato de alquiler.",
+      "rationale": "Firmar y consultar la fecha de fin del contrato son tareas distintas."
+    },
+    {
+      "id": "v2-cal-n-19",
+      "family": "v2-appliance-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Repara el horno de la cocina.",
+      "textB": "Compra una bandeja nueva para el horno de la cocina.",
+      "rationale": "Reparar el horno y comprar un accesorio son encargos diferentes."
+    },
+    {
+      "id": "v2-cal-n-20",
+      "family": "v2-pet-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Lleva al perro al veterinario.",
+      "textB": "Compra alimento para el perro.",
+      "rationale": "La atención veterinaria y la compra de comida son tareas diferentes."
+    }
+  ]
+}

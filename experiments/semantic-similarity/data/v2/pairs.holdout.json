@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "partition": "holdout",
+  "status": "approved",
+  "pairs": [
+    {
+      "id": "v2-hol-s-01",
+      "family": "v2-dentist-attendee",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Confirma la cita dental de Mariana para el viernes.",
+      "textB": "Confirma la cita dental de Lucía para el viernes.",
+      "rationale": "La misma gestión y horario podrían referirse a un registro con nombre corregido."
+    },
+    {
+      "id": "v2-hol-s-02",
+      "family": "v2-warranty-month",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "La garantía de la laptop vence en junio.",
+      "textB": "La garantía de la laptop vence en julio.",
+      "rationale": "Puede tratarse del mismo aviso de vencimiento con mes actualizado."
+    },
+    {
+      "id": "v2-hol-s-03",
+      "family": "v2-inventory-count",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Registra seis cajas de material en el inventario.",
+      "textB": "Registra siete cajas de material en el inventario.",
+      "rationale": "La operación de inventario se conserva y cambia la cantidad."
+    },
+    {
+      "id": "v2-hol-s-04",
+      "family": "v2-pickup-branch",
+      "category": "detail_variation",
+      "label": "similar",
+      "textA": "Retira el paquete en la sucursal de Surco.",
+      "textB": "Retira el paquete en la sucursal de Barranco.",
+      "rationale": "La gestión de retiro parece la misma con una sucursal distinta."
+    },
+    {
+      "id": "v2-hol-s-05",
+      "family": "v2-account-recovery",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "No puedo acceder porque perdí mi contraseña.",
+      "textB": "Necesito recuperar la clave para entrar a mi cuenta.",
+      "rationale": "Ambas frases describen la misma necesidad de recuperar el acceso."
+    },
+    {
+      "id": "v2-hol-s-06",
+      "family": "v2-electricity-outage",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Se cortó la luz en mi departamento.",
+      "textB": "Mi vivienda está sin suministro eléctrico.",
+      "rationale": "Ambas informan una interrupción eléctrica."
+    },
+    {
+      "id": "v2-hol-s-07",
+      "family": "v2-tax-receipt",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Envíame por correo el comprobante del impuesto.",
+      "textB": "El comprobante del impuesto mándamelo al correo.",
+      "rationale": "La solicitud y el documento coinciden."
+    },
+    {
+      "id": "v2-hol-s-08",
+      "family": "v2-roof-leak",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "Hay una filtración de agua en el techo.",
+      "textB": "Gotea desde arriba cuando llueve dentro de la casa.",
+      "rationale": "Ambas describen una posible gotera del techo."
+    },
+    {
+      "id": "v2-hol-s-09",
+      "family": "v2-train-schedule",
+      "category": "accent_punctuation",
+      "label": "similar",
+      "textA": "¿A qué hora sale el tren?",
+      "textB": "A que hora sale el tren",
+      "rationale": "Solo cambian acentos y signos de la misma pregunta."
+    },
+    {
+      "id": "v2-hol-s-10",
+      "family": "v2-delivery-received",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Ya recibí el pedido de la librería.",
+      "textB": "El pedido de la librería ya me fue entregado.",
+      "rationale": "Ambas confirman la recepción del mismo tipo de pedido."
+    },
+    {
+      "id": "v2-hol-n-01",
+      "family": "v2-thermostat-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Sube la temperatura del termostato.",
+      "textB": "Baja la temperatura del termostato.",
+      "rationale": "Las acciones sobre el termostato son contrarias."
+    },
+    {
+      "id": "v2-hol-n-02",
+      "family": "v2-camera-opposite",
+      "category": "opposite_action",
+      "label": "not_similar",
+      "textA": "Enciende la cámara durante la llamada.",
+      "textB": "Apaga la cámara durante la llamada.",
+      "rationale": "Encender y apagar la cámara son órdenes opuestas."
+    },
+    {
+      "id": "v2-hol-n-03",
+      "family": "v2-deposit-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El depósito llegó a mi cuenta.",
+      "textB": "El depósito no llegó a mi cuenta.",
+      "rationale": "La negación cambia el hecho comunicado."
+    },
+    {
+      "id": "v2-hol-n-04",
+      "family": "v2-event-negation",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "La conferencia fue cancelada.",
+      "textB": "La conferencia no fue cancelada.",
+      "rationale": "Las frases afirman situaciones incompatibles."
+    },
+    {
+      "id": "v2-hol-n-05",
+      "family": "v2-ticket-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Compra una entrada para el concierto.",
+      "textB": "Busca la dirección del recinto del concierto.",
+      "rationale": "Comprar acceso y averiguar una dirección son gestiones distintas."
+    },
+    {
+      "id": "v2-hol-n-06",
+      "family": "v2-school-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Matricula al niño en la escuela.",
+      "textB": "Consulta el calendario de la escuela.",
+      "rationale": "La matrícula y la consulta de calendario tienen fines diferentes."
+    },
+    {
+      "id": "v2-hol-n-07",
+      "family": "v2-hotel-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Cambia la reserva del hotel.",
+      "textB": "Solicita una factura del hotel.",
+      "rationale": "Modificar una reserva y pedir una factura son operaciones distintas."
+    },
+    {
+      "id": "v2-hol-n-08",
+      "family": "v2-phone-intent",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Repara la pantalla del teléfono.",
+      "textB": "Contrata un plan de datos para el teléfono.",
+      "rationale": "Una frase trata de reparación y la otra de servicio móvil."
+    },
+    {
+      "id": "v2-hol-n-09",
+      "family": "v2-delivery-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Envía la carta al contador.",
+      "textB": "Archiva la carta que envió el contador.",
+      "rationale": "Enviar una carta y archivar otra son gestiones diferentes."
+    },
+    {
+      "id": "v2-hol-n-10",
+      "family": "v2-plant-object",
+      "category": "different_intent",
+      "label": "not_similar",
+      "textA": "Riega el árbol del patio.",
+      "textB": "Poda el árbol del patio.",
+      "rationale": "Regar y podar el árbol son acciones diferentes."
+    }
+  ]
+}

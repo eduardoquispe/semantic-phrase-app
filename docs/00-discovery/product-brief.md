@@ -4,7 +4,7 @@
 |---|---|
 | Proyecto | Semantic Phrase Validator |
 | Documento | Product Brief |
-| Versión | 1.0.0 |
+| Versión | 1.1.0 |
 | Estado | Approved |
 | Metodología | AI-First / Human-in-the-Loop |
 | Fuente oficial | `docs/00-discovery/reto-tecnico.md` |
@@ -255,7 +255,9 @@ Esta descripción no constituye un contrato de API ni define el esquema SQL.
 - Las etiquetas humanas actúan como referencia de verdad para esta evaluación acotada.
 - Los pares se utilizan para evaluación y calibración, no para entrenamiento.
 - El modelo específico y el valor inicial del umbral permanecen pendientes hasta AI Feasibility.
-- El mínimo vigente es 75 % (DEC-019). Los reportes históricos conservan el criterio con el que se ejecutaron; los protocolos y comandos de evaluación deben alinearse antes de una nueva corrida. Este cambio no selecciona un modelo o umbral ni acredita resultados sobre el holdout.
+- El mínimo vigente es 75 % (DEC-019). El Experimento 2 obtuvo 50 % con la definición original y 65 % con la definición ampliada de DEC-020 en sus respectivos holdouts. Ninguno acreditó un modelo o umbral; ambos reportes finales se conservan como evidencia.
+- En una evaluación nueva, `similar` significa que conviene advertir sobre un **posible** duplicado para revisión humana. Si se conserva la misma acción y el mismo asunto, un cambio de nombre, cantidad, fecha, hora o lugar puede seguir siendo `similar`; el usuario decide si guarda ambas frases. Las acciones opuestas, negaciones que invierten el hecho y solicitudes de intención distinta son `not_similar` (DEC-020).
+- Esta definición requiere un conjunto nuevo con etiquetas aprobadas y un holdout independiente antes de aceptar un modelo. No se reetiqueta el holdout ya evaluado para reclamar el mínimo de calidad.
 - El fine-tuning no forma parte del MVP.
 
 ---
@@ -436,6 +438,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | DEC-017 | Mantener la metadata conceptual independiente de su diseño SQL o JSON | Evita anticipar decisiones de arquitectura en Discovery | CONFIRMED |
 | DEC-018 | Separar **Validar** y **Guardar**; validar nunca persiste y guardar exige una validación vigente; ante coincidencia se usa **Guardar de todos modos** o **Cancelar** | Instrucción explícita del usuario para alinear el flujo con la validación previa al guardado del reto; sustituye DEC-001 | CONFIRMED |
 | DEC-019 | Exigir al menos 75 % de acierto sobre un mínimo de 20 pares equilibrados en español | Cambio explícito del usuario de 80 % a 75 %; es un criterio interno y no un porcentaje impuesto por el reto; sustituye DEC-010 | CONFIRMED |
+| DEC-020 | Advertir sobre posibles duplicados aunque cambie un detalle de nombre, cantidad, fecha, hora o lugar si se conserva la acción y el asunto; tratar acciones opuestas, negaciones y distintas intenciones como registros diferentes | El usuario aclaró que estas variaciones pequeñas pueden merecer revisión humana; se mantiene la decisión explícita antes de guardar | CONFIRMED |
 
 ---
 
@@ -476,13 +479,13 @@ Las preguntas abiertas son técnicas y no bloquean la aprobación del alcance de
 | Estado de aprobación | APPROVED |
 | Aprobado por | Product Owner |
 | Fecha de aprobación | 2026-10-20 |
-| Autorización | Aprobación explícita otorgada durante la sesión de Product Discovery; cambios posteriores de botones separados y calidad mínima registrados en DEC-018 y DEC-019 por instrucción explícita del usuario |
+| Autorización | Aprobación explícita otorgada durante la sesión de Product Discovery; cambios posteriores registrados en DEC-018, DEC-019 y DEC-020 por instrucciones explícitas del usuario |
 
 ---
 
 ## 14. Next Steps
 
-1. Ejecutar AI Feasibility para evaluar modelos candidatos de Hugging Face y calibrar el umbral.
+1. Iterar AI Feasibility con la definición de posible duplicado de DEC-020, revisar un conjunto nuevo y validarlo con un holdout independiente.
 2. Diseñar en Figma los estados inicial, validando, éxito, advertencia, confirmación, error y eliminación.
 3. Definir arquitectura, persistencia SQL, estrategia de inferencia y contratos REST.
 4. Convertir este Product Brief en especificaciones SDD verificables con Spec Kit.

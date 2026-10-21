@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "partition": "calibration",
+  "status": "approved",
+  "pairs": [
+    {
+      "id": "cal-s-01",
+      "family": "password-recovery",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "Olvidé mi contraseña y necesito recuperar el acceso.",
+      "textB": "No recuerdo mi clave y quiero volver a entrar en mi cuenta.",
+      "rationale": "Ambas frases solicitan recuperar el acceso por haber olvidado la contraseña."
+    },
+    {
+      "id": "cal-s-02",
+      "family": "medical-appointment",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Tengo una cita con el médico mañana por la mañana.",
+      "textB": "Mañana en la mañana debo ir a mi consulta médica.",
+      "rationale": "Cambian el orden y la redacción, pero registran la misma cita."
+    },
+    {
+      "id": "cal-s-03",
+      "family": "late-delivery",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "El paquete todavía no ha llegado.",
+      "textB": "Mi pedido aún no fue entregado.",
+      "rationale": "Paquete y pedido refieren a una entrega pendiente en ambos textos."
+    },
+    {
+      "id": "cal-s-04",
+      "family": "flight-cancellation",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "La aerolínea canceló mi vuelo.",
+      "textB": "Ya no podré viajar porque suspendieron el avión que había reservado.",
+      "rationale": "Las dos frases comunican la cancelación del viaje aéreo reservado."
+    },
+    {
+      "id": "cal-s-05",
+      "family": "afternoon-rain",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Lloverá durante toda la tarde.",
+      "textB": "Se esperan lluvias a lo largo de la tarde.",
+      "rationale": "Expresan el mismo pronóstico de lluvia vespertina."
+    },
+    {
+      "id": "cal-s-06",
+      "family": "duplicate-charge",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "Me cobraron dos veces la misma compra.",
+      "textB": "El pago de mi compra aparece duplicado.",
+      "rationale": "Ambas describen un cargo duplicado por una compra."
+    },
+    {
+      "id": "cal-s-07",
+      "family": "meeting-reschedule",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Necesito cambiar la reunión del lunes para el martes.",
+      "textB": "Quiero reprogramar para el martes la reunión prevista el lunes.",
+      "rationale": "La acción, reunión y cambio de día son equivalentes."
+    },
+    {
+      "id": "cal-s-08",
+      "family": "medicine-after-dinner",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "Debo tomar la medicina después de cenar.",
+      "textB": "Después de la cena tengo que tomar el medicamento.",
+      "rationale": "Registran la misma toma de medicamento en el mismo momento."
+    },
+    {
+      "id": "cal-s-09",
+      "family": "hotel-reservation",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Reservé una habitación para el fin de semana.",
+      "textB": "Tengo reservada una habitación este fin de semana.",
+      "rationale": "La reserva de alojamiento y el periodo coinciden."
+    },
+    {
+      "id": "cal-s-10",
+      "family": "unsigned-contract",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "Falta la firma del cliente en el contrato.",
+      "textB": "El acuerdo todavía no ha sido firmado por el cliente.",
+      "rationale": "Ambas señalan que el cliente aún debe firmar el mismo tipo de documento."
+    },
+    {
+      "id": "cal-s-11",
+      "family": "internet-outage",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "La conexión a internet dejó de funcionar en casa.",
+      "textB": "Estoy sin servicio de internet en mi domicilio.",
+      "rationale": "Los textos describen la falta de internet en el hogar."
+    },
+    {
+      "id": "cal-s-12",
+      "family": "printer-paper",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Hay que poner más papel en la impresora.",
+      "textB": "La impresora necesita que recarguemos las hojas.",
+      "rationale": "Ambas indican que se debe reponer papel en la impresora."
+    },
+    {
+      "id": "cal-s-13",
+      "family": "rent-payment",
+      "category": "accent_punctuation",
+      "label": "similar",
+      "textA": "¿Pagaste el alquiler de este mes?",
+      "textB": "Pagaste el alquiler de este mes",
+      "rationale": "La ausencia de signos no cambia la pregunta práctica que se desea registrar."
+    },
+    {
+      "id": "cal-s-14",
+      "family": "car-fuel",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "El auto se está quedando sin combustible.",
+      "textB": "Tenemos que ir a una gasolinera porque el tanque está casi vacío.",
+      "rationale": "Ambas expresan que el vehículo necesita combustible pronto."
+    },
+    {
+      "id": "cal-s-15",
+      "family": "course-enrollment",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Me inscribí en el curso de fotografía.",
+      "textB": "Ya estoy matriculado en el taller de fotografía.",
+      "rationale": "Curso y taller describen la misma inscripción formativa."
+    },
+    {
+      "id": "cal-s-16",
+      "family": "kitchen-light",
+      "category": "paraphrase",
+      "label": "similar",
+      "textA": "La bombilla de la cocina está quemada.",
+      "textB": "La luz de la cocina dejó de encender.",
+      "rationale": "Ambas registran que la iluminación de la cocina no funciona."
+    },
+    {
+      "id": "cal-s-17",
+      "family": "report-deadline",
+      "category": "reordering",
+      "label": "similar",
+      "textA": "El informe debe entregarse antes del viernes.",
+      "textB": "Antes de que llegue el viernes hay que presentar el informe.",
+      "rationale": "El entregable y su fecha límite son los mismos."
+    },
+    {
+      "id": "cal-s-18",
+      "family": "phone-screen",
+      "category": "synonym",
+      "label": "similar",
+      "textA": "Se rompió la pantalla de mi celular.",
+      "textB": "El display de mi teléfono quedó quebrado.",
+      "rationale": "Los dos textos describen una pantalla de teléfono dañada."
+    },
+    {
+      "id": "cal-s-19",
+      "family": "door-lock",
+      "category": "low_lexical_overlap",
+      "label": "similar",
+      "textA": "La cerradura de la puerta principal está atascada.",
+      "textB": "No puedo girar la llave para entrar por la puerta de adelante.",
+      "rationale": "Ambas describen el bloqueo de la cerradura del acceso principal."
+    },
+    {
+      "id": "cal-s-20",
+      "family": "receipt-email",
+      "category": "grammar_variation",
+      "label": "similar",
+      "textA": "Envíame el recibo por correo electrónico.",
+      "textB": "Quiero que el comprobante sea enviado a mi email.",
+      "rationale": "Solicitan recibir el comprobante mediante correo electrónico."
+    },
+    {
+      "id": "cal-n-01",
+      "family": "coffee-temperature",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El café está caliente.",
+      "textB": "El café no está caliente.",
+      "rationale": "La negación hace que las afirmaciones sean opuestas."
+    },
+    {
+      "id": "cal-n-02",
+      "family": "product-count",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "El pedido contiene tres productos.",
+      "textB": "El pedido contiene trece productos.",
+      "rationale": "La cantidad del pedido cambia de tres a trece."
+    },
+    {
+      "id": "cal-n-03",
+      "family": "train-destination",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "El tren sale mañana hacia Cusco.",
+      "textB": "El tren sale mañana hacia Arequipa.",
+      "rationale": "El destino es una entidad esencial diferente."
+    },
+    {
+      "id": "cal-n-04",
+      "family": "purchase-action",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "Quiero cancelar la compra realizada ayer.",
+      "textB": "Quiero confirmar la compra realizada ayer.",
+      "rationale": "Comparten casi todas las palabras, pero las acciones son contrarias."
+    },
+    {
+      "id": "cal-n-05",
+      "family": "bank-card",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "Necesito bloquear mi tarjeta bancaria.",
+      "textB": "Necesito aumentar el límite de mi tarjeta bancaria.",
+      "rationale": "Tratan sobre la misma tarjeta, pero solicitan operaciones distintas."
+    },
+    {
+      "id": "cal-n-06",
+      "family": "event-attendance",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "Ana asistirá a la conferencia.",
+      "textB": "Ana no asistirá a la conferencia.",
+      "rationale": "Una frase confirma la asistencia y la otra la niega."
+    },
+    {
+      "id": "cal-n-07",
+      "family": "room-floor",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "La oficina está en el segundo piso.",
+      "textB": "La oficina está en el séptimo piso.",
+      "rationale": "El piso indicado es diferente y cambia la ubicación."
+    },
+    {
+      "id": "cal-n-08",
+      "family": "email-recipient",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "Envía el presupuesto a María.",
+      "textB": "Envía el presupuesto a Carlos.",
+      "rationale": "El destinatario del presupuesto no es el mismo."
+    },
+    {
+      "id": "cal-n-09",
+      "family": "window-state",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "Deja abierta la ventana del dormitorio.",
+      "textB": "Deja cerrada la ventana del dormitorio.",
+      "rationale": "La estructura es casi idéntica, pero el estado pedido es opuesto."
+    },
+    {
+      "id": "cal-n-10",
+      "family": "restaurant-actions",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "Quiero reservar una mesa en el restaurante.",
+      "textB": "Quiero presentar una queja sobre el restaurante.",
+      "rationale": "Comparten establecimiento, pero una intención reserva y la otra reclama."
+    },
+    {
+      "id": "cal-n-11",
+      "family": "file-storage",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "Guarda el archivo en la carpeta de ventas.",
+      "textB": "Guarda el archivo en la carpeta de recursos humanos.",
+      "rationale": "La carpeta de destino cambia."
+    },
+    {
+      "id": "cal-n-12",
+      "family": "oven-state",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "El horno ya está encendido.",
+      "textB": "El horno todavía no está encendido.",
+      "rationale": "Describen estados contrarios del horno."
+    },
+    {
+      "id": "cal-n-13",
+      "family": "invoice-amount",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "La factura pendiente es de 150 soles.",
+      "textB": "La factura pendiente es de 1.500 soles.",
+      "rationale": "El importe adeudado cambia de manera sustancial."
+    },
+    {
+      "id": "cal-n-14",
+      "family": "building-access",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "El acceso está permitido para visitantes.",
+      "textB": "El acceso está prohibido para visitantes.",
+      "rationale": "Permitido y prohibido producen instrucciones opuestas."
+    },
+    {
+      "id": "cal-n-15",
+      "family": "gym-actions",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "Voy al gimnasio para renovar mi membresía.",
+      "textB": "Voy al gimnasio para cancelar mi membresía.",
+      "rationale": "El lugar y objeto coinciden, pero las acciones son contrarias."
+    },
+    {
+      "id": "cal-n-16",
+      "family": "birthday-date",
+      "category": "number_change",
+      "label": "not_similar",
+      "textA": "La fiesta de cumpleaños será el 12 de mayo.",
+      "textB": "La fiesta de cumpleaños será el 21 de mayo.",
+      "rationale": "La fecha del evento es distinta."
+    },
+    {
+      "id": "cal-n-17",
+      "family": "pet-feeding",
+      "category": "entity_change",
+      "label": "not_similar",
+      "textA": "Dale comida al perro antes de salir.",
+      "textB": "Dale comida al gato antes de salir.",
+      "rationale": "La mascota que debe recibir alimento cambia."
+    },
+    {
+      "id": "cal-n-18",
+      "family": "software-update",
+      "category": "hard_negative",
+      "label": "not_similar",
+      "textA": "Instala la actualización del sistema.",
+      "textB": "Desinstala la actualización del sistema.",
+      "rationale": "Los verbos indican operaciones inversas."
+    },
+    {
+      "id": "cal-n-19",
+      "family": "school-communication",
+      "category": "same_topic_different_intent",
+      "label": "not_similar",
+      "textA": "La escuela publicó las notas del examen.",
+      "textB": "La escuela cambió la fecha del examen.",
+      "rationale": "Comparten el examen como tema, pero comunican hechos diferentes."
+    },
+    {
+      "id": "cal-n-20",
+      "family": "warehouse-door",
+      "category": "negation",
+      "label": "not_similar",
+      "textA": "La puerta del almacén quedó asegurada.",
+      "textB": "La puerta del almacén quedó sin asegurar.",
+      "rationale": "El estado de seguridad de la puerta es opuesto."
+    }
+  ]
+}
