@@ -1,0 +1,17 @@
+{
+  "name": "semantic-similarity-feasibility",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "models": "node src/benchmark-model.mjs --list",
+    "benchmark": "node --expose-gc src/run-all.mjs",
+    "benchmark:quick": "node --expose-gc src/run-all.mjs --quick"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
