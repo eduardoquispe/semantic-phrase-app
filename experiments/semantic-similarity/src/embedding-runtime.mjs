@@ -7,17 +7,25 @@ import { getModel } from "./model-config.mjs";
 const experimentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cacheRoot = path.join(experimentRoot, ".cache", "huggingface");
 
-export async function createEmbedder(modelKey, dtype = "q8") {
+export async function createEmbedder(modelKey, dtype = "q8", { offline = false, cacheDir = cacheRoot } = {}) {
   const model = getModel(modelKey);
-  env.cacheDir = cacheRoot;
-  env.allowLocalModels = false;
+  env.cacheDir = cacheDir;
+  env.allowLocalModels = offline;
+  env.allowRemoteModels = !offline;
   const extractor = await pipeline("feature-extraction", model.runtimeModel, {
     device: "cpu",
-    dtype
+    dtype,
+    local_files_only: offline
   });
-  const projection = model.projection
-    ? await loadDenseProjection(model.projection, cacheRoot)
-    : null;
+  let projection;
+  try {
+    projection = model.projection
+      ? await loadDenseProjection(model.projection, cacheDir, { offline })
+      : null;
+  } catch (error) {
+    await extractor.dispose();
+    throw error;
+  }
   const embeddingOptions = { pooling: model.pooling, normalize: projection === null };
 
   return {

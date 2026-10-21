@@ -42,6 +42,24 @@ export const models = {
     pooling: "cls",
     prefix: "",
     notes: "Se evalúa solo el embedding denso normalizado; BGE-M3 usa pooling CLS."
+  },
+  granite_97m_r2: {
+    key: "granite_97m_r2",
+    sourceModel: "ibm-granite/granite-embedding-97m-multilingual-r2",
+    runtimeModel: "onnx-community/granite-embedding-97m-multilingual-r2-ONNX",
+    expectedDimensions: 384,
+    pooling: "cls",
+    prefix: "",
+    notes: "Granite Embedding 97M Multilingual R2 con pooling CLS y normalización L2."
+  },
+  mpnet_multilingual: {
+    key: "mpnet_multilingual",
+    sourceModel: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    runtimeModel: "Xenova/paraphrase-multilingual-mpnet-base-v2",
+    expectedDimensions: 768,
+    pooling: "mean",
+    prefix: "",
+    notes: "Modelo multilingüe de paráfrasis con mean pooling y normalización L2."
   }
 };
 

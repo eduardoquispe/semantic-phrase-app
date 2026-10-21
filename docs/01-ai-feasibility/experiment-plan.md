@@ -1,227 +1,46 @@
-# Plan de experimentación — AI Feasibility
+# Plan de ejecución — MVP Semantic Phrase Validator
 
 | Campo | Valor |
 |---|---|
-| Proyecto | Semantic Phrase Validator |
-| Fase | 02 — AI Feasibility |
-| Documento | Plan de experimentación |
-| Estado | Aprobado para iniciar el Experimento 1 |
-| Metodología | AI-First / Human-in-the-Loop |
-| Fecha | 2026-10-20 |
+| Alcance | Reto técnico: aplicación de frases con validación semántica antes de guardar |
+| Estado | Selección de modelo cerrada; continuar con la aplicación |
+| Modelo elegido | MiniLM local en Node.js; ver [justificación](model-decision.md) |
+| Fecha | 2026-10-21 |
 
-## 1. Contexto y fuentes
+## Objetivo
 
-Este plan deriva de los requisitos aprobados en:
+Entregar una aplicación React o Vue, API REST en Node.js y PostgreSQL que permita escribir, validar, guardar, listar y eliminar frases cortas. La validación compara una frase nueva con las guardadas mediante embeddings de Hugging Face y avisa de posibles duplicados. El usuario decide si guarda una frase advertida.
 
-- `docs/00-discovery/product-brief.md`
-- `docs/00-discovery/reto-tecnico.md`
+## Evaluación realizada para elegir el modelo
 
-> Nota: la referencia inicial a `docs/00-discovery/reto-original.md` no corresponde a un archivo existente en el repositorio. Se utiliza `docs/00-discovery/reto-tecnico.md`, que además figura como fuente oficial en el Product Brief.
+Se ejecutaron estos pasos antes de tomar la decisión. Los conjuntos, scripts y pruebas permanecen en [`experiments/semantic-similarity/`](../../experiments/semantic-similarity/README.md); las cifras y la interpretación están en el [reporte de decisión](model-decision.md).
 
-No se asumirán resultados, umbrales ni selecciones tecnológicas antes de ejecutar y analizar los experimentos correspondientes.
+1. **Comprobar viabilidad local.** Ejecutar MiniLM, E5, DistilUSE y BGE-M3 desde Node.js con Transformers.js, ONNX, CPU y pesos `q8`. Verificar dimensión, valores finitos, norma L2 y estabilidad entre repeticiones. Medir carga desde caché, primera inferencia, ocho inferencias calientes, lote de seis, memoria RSS y tamaño descargado. Cada modelo corre en un proceso separado.
+2. **Medir calidad semántica en pares.** Usar frases en español etiquetadas como posible duplicado o no duplicado, con calibración separada del holdout. Generar embeddings, calcular coseno y escoger para cada modelo un umbral solo con calibración. Evaluar los umbrales congelados una vez sobre 20 pares nuevos. Registrar aciertos, precisión, recall, F1, falsos positivos y falsos negativos. Esta prueba mide similitud entre dos frases; no prueba todavía la recuperación desde una lista.
+3. **Probar el flujo con PostgreSQL y pgvector.** Usar 40 casos de calibración y 20 de holdout, equilibrados entre alerta y ausencia de alerta. Cada caso tiene una frase nueva y tres frases activas. Generar e insertar embeddings propios de MiniLM y BGE-M3; buscar la candidata más cercana por coseno y aplicar un umbral calibrado para cada modelo. Congelar umbrales y hashes de los conjuntos antes del holdout. Medir decisiones correctas, errores al recuperar la candidata esperada, falsos positivos, falsos negativos y tiempo de validación. Los casos del holdout no se utilizan para ajustar el umbral.
+4. **Comparar costo y fallos.** Contrastar latencia y memoria de los candidatos con la calidad observada. Con MiniLM, comprobar carga desde caché sin red, rechazo de caché vacía o incompleta y propagación de fallos simulados de inferencia y base de datos. Distinguir las pruebas simuladas de las verificaciones que requerirán la aplicación final.
+5. **Seleccionar para el MVP.** Priorizar funcionamiento local, costo de integración y resultados del flujo completo. El 75 % fue el objetivo interno usado para leer las pruebas; no es una condición impuesta por el reto ni una garantía estadística. Registrar resultados desfavorables y límites sin repetir holdouts para convertirlos en aprobados.
 
-## 2. Hipótesis que debemos validar
+Para interpretar las métricas: **accuracy** es la proporción de decisiones correctas; **precisión** mide cuántas alertas emitidas correspondían a casos positivos; **recall** mide cuántos positivos recibieron alerta; un **falso positivo** alerta sin corresponder y un **falso negativo** deja pasar un caso que debía alertarse. Un **error de recuperación** significa que la primera candidata no era la frase pertinente, aunque la decisión de alerta se contabiliza por separado.
 
-La fase debe producir evidencia para responder:
+Los umbrales de pares y del flujo se calibraron con datos y tareas diferentes. La base de datos no altera la escala de la similitud coseno; la diferencia surge al seleccionar la mayor coincidencia entre varias frases y optimizar sobre otro conjunto. Por eso el umbral de pares queda como evidencia diagnóstica y el valor inicial del MVP procede de la prueba del flujo.
 
-1. ¿Puede Node.js generar embeddings reproducibles para frases cortas en español?
-2. ¿Qué modelo separa mejor duplicados semánticos de frases solamente relacionadas?
-3. ¿Qué umbral ofrece un equilibrio aceptable entre falsos positivos y falsos negativos?
-4. ¿Los resultados calculados en JavaScript coinciden con PostgreSQL y pgvector?
-5. ¿La inferencia y la búsqueda cumplen el objetivo normal de cinco segundos?
-6. ¿El consumo de memoria, el tamaño del modelo y el tiempo de arranque son razonables para el MVP?
-7. ¿Conviene ejecutar la inferencia localmente en Node.js o consumir un servicio externo?
+## Decisiones cerradas
 
-La exactitud mínima vigente es 75 % sobre al menos 20 pares equilibrados, conforme a `SC-003` y `DEC-019` del Product Brief. Sin embargo, 20 pares no son suficientes para seleccionar de manera confiable un umbral.
+- Usar `Xenova/paraphrase-multilingual-MiniLM-L12-v2` en Node.js, con pesos ONNX `q8`, *mean pooling*, normalización L2 y vectores de 384 dimensiones. Preparar la caché del modelo durante la instalación.
+- Usar `0.8538613695045911` como **umbral inicial configurable**: es el valor con el que se probó el flujo completo de MiniLM. Su resultado de 12/20 y sus ocho falsos negativos se documentan en la [decisión de modelo](model-decision.md); el valor sirve para arrancar el MVP, no acredita una detección confiable.
+- Usar PostgreSQL con pgvector y búsqueda exacta para el volumen del MVP. Mantener una coincidencia textual normalizada separada de la similitud semántica.
+- Mantener botones separados **Validar** y **Guardar**. Validar solo consulta; guardar requiere un resultado vigente. Si hay advertencia, el usuario confirma con **Guardar de todos modos** o cancela.
+- Registrar la configuración del modelo junto con los embeddings para evitar comparar vectores incompatibles.
+- Tratar el 75 % de aciertos como meta orientativa de la exploración, no como condición de entrega. La [decisión de modelo](model-decision.md) muestra los resultados reales y sus errores.
 
-## 3. Modelos candidatos iniciales
+## Trabajo pendiente para entregar el MVP
 
-Se compararán inicialmente cuatro modelos, sin seleccionar todavía un ganador:
+1. **Backend y datos:** crear migraciones para frases, embeddings y metadata de validación; implementar API para validar, guardar, listar y eliminar. Guardar la frase y su metadata en una transacción. Rechazar un guardado si la validación falló, caducó o corresponde a otro texto.
+2. **Frontend:** construir formulario, lista y estados de carga, advertencia y error. Conservar el texto ante fallos, permitir reintentar e invalidar el resultado si se edita la frase.
+3. **Configuración:** exponer el umbral inicial de MiniLM (`0.8538613695045911`) como parámetro configurable y documentar su limitación. Definir un tiempo máximo de validación. Ninguno de los dos debe permitir guardar cuando el resultado sea desconocido.
+4. **Comprobación final:** probar los flujos de validar, guardar, confirmar coincidencia, eliminar y reintentar tras un error. Comprobar con PostgreSQL real que un fallo al guardar no deja datos parciales. Medir una validación desde la API de la aplicación y documentar instalación, variables de entorno y una demostración reproducible.
 
-| Modelo | Dimensión esperada | Papel en la evaluación | Observaciones |
-|---|---:|---|---|
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Candidato principal ligero | Entrenado para similitud de oraciones, soporta 50 idiomas y usa licencia Apache-2.0. Existe una conversión ONNX disponible. |
-| `intfloat/multilingual-e5-small` | 384 | Candidato competitivo | Multilingüe y compacto. Requiere respetar sus prefijos; para similitud simétrica recomienda `query:` en ambos textos. Sus puntajes necesitan calibración propia. |
-| `sentence-transformers/distiluse-base-multilingual-cased-v2` | 512 | Línea base madura e intermedia | Está orientado a embeddings de oraciones, soporta más de 50 idiomas y permite comparar un modelo consolidado de costo medio. |
-| `BAAI/bge-m3` | 1024 | Candidato de mayor capacidad | Soporta más de 100 idiomas y recuperación densa, sparse y multi-vector. En esta fase solo se evaluará su embedding denso normalizado; su mayor tamaño, memoria y latencia deben justificarse con resultados. |
+## Fuera de esta entrega
 
-Referencias:
-
-- [Model card de paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)
-- [Model card de multilingual-e5-small](https://huggingface.co/intfloat/multilingual-e5-small)
-- [Model card de distiluse-base-multilingual-cased-v2](https://huggingface.co/sentence-transformers/distiluse-base-multilingual-cased-v2)
-- [Model card de BGE-M3](https://huggingface.co/BAAI/bge-m3)
-- [Conversión ONNX de BGE-M3 para Transformers.js](https://huggingface.co/Xenova/bge-m3)
-
-La línea base propuesta es inferencia local con `@huggingface/transformers` y ONNX. La librería soporta inferencia server-side en Node.js mediante `onnxruntime-node` y permite controlar el pooling y la normalización.
-
-- [Inferencia server-side en Node.js](https://huggingface.co/docs/transformers.js/main/tutorials/node)
-- [Backend ONNX de Transformers.js](https://huggingface.co/docs/transformers.js/api/backends/onnx)
-
-La compatibilidad real de cada modelo, su revisión exacta, el pooling y la cuantización forman parte del primer experimento; no se consideran validados de antemano.
-
-## 4. Conjunto de evaluación propuesto
-
-Se prepararán 60 pares etiquetados:
-
-- 30 similares.
-- 30 no similares.
-- 40 destinados a calibración.
-- 20 reservados como holdout final, sin utilizarlos para seleccionar el umbral.
-
-Los pares cubrirán:
-
-- Paráfrasis con vocabulario distinto.
-- Reordenamiento y variaciones gramaticales.
-- Sinónimos y expresiones propias del español.
-- Mismo tema, pero diferente intención.
-- Negaciones y significados opuestos.
-- Cambios de números, cantidades, personas o lugares.
-- Frases ambiguas.
-- Acentos y puntuación.
-- Casos de bajo solapamiento léxico.
-- *Hard negatives*: frases muy parecidas en palabras, pero diferentes en significado.
-
-Las coincidencias idénticas después de normalizar mayúsculas y espacios se excluirán de la métrica semántica, porque el producto las resuelve mediante lógica determinista.
-
-Las etiquetas humanas serán revisables. El conjunto será presentado para aprobar la verdad de referencia antes de utilizarlo para calibrar o comparar modelos.
-
-## 5. Plan de experimentación
-
-### 5.1 Experimento 1 — Viabilidad de embeddings en Node.js
-
-**Objetivo:** verificar que cada candidato puede ejecutarse correctamente desde Node.js.
-
-Mediciones:
-
-- Carga y descarga efectiva del modelo.
-- Dimensión y norma de los embeddings.
-- Determinismo aproximado entre ejecuciones.
-- Simetría de la similitud coseno.
-- Tiempo de descarga y arranque en frío, reportados por separado.
-- Latencia caliente por frase y por lote.
-- Memoria RSS antes y después de cargar el modelo.
-- Tamaño de los artefactos almacenados.
-- Impacto de cuantización, si está disponible.
-- Requisitos particulares de pooling, normalización y prefijos.
-
-**Criterio de paso:** producir embeddings finitos y consistentes desde Node.js, sin depender de Python.
-
-### 5.2 Experimento 2 — Calidad semántica y calibración
-
-Para cada modelo:
-
-1. Generar embeddings para el conjunto etiquetado.
-2. Calcular similitud coseno.
-3. Barrer umbrales sobre el conjunto de calibración.
-4. Seleccionar umbrales candidatos sin consultar el holdout.
-5. Evaluar una sola vez sobre el holdout.
-
-Métricas:
-
-- Accuracy.
-- Precision, recall y F1 para la clase `similar`.
-- Matriz de confusión.
-- Falsos positivos y falsos negativos concretos.
-- Distribución de puntajes por clase.
-- Margen entre casos similares y no similares.
-- Umbral elegido y sensibilidad a pequeñas variaciones.
-
-Además del mínimo vigente de 75 % de accuracy, se priorizará el recall de duplicados: un falso negativo puede permitir guardar un duplicado si el usuario pulsa **Guardar** después de validar, mientras que un falso positivo activa la revisión HITL. No se maximizará recall sin límite, porque demasiadas advertencias degradarían la utilidad del sistema.
-
-### 5.3 Experimento 3 — Persistencia y búsqueda con pgvector
-
-Validaciones:
-
-- Persistir embeddings usando la dimensión real del modelo.
-- Recuperarlos sin corrupción apreciable.
-- Comparar el coseno calculado en JavaScript con `1 - (embedding <=> query)`.
-- Verificar que JavaScript y PostgreSQL devuelvan la misma candidata top-1.
-- Filtrar correctamente las frases no activas.
-- Resolver empates con un criterio determinista.
-- Medir consultas exactas con corpus de 100, 1 000 y 10 000 vectores.
-
-pgvector soporta distancia coseno y búsqueda exacta y aproximada. Los índices aproximados pueden sacrificar recall, por lo que no se asumirá HNSW para el MVP hasta demostrar que una búsqueda exacta resulta insuficiente.
-
-- [Documentación oficial de pgvector](https://github.com/pgvector/pgvector/blob/master/README.md)
-
-Si se prueba HNSW, se medirá explícitamente `recall@1` contra la búsqueda exacta.
-
-### 5.4 Experimento 4 — Rendimiento operacional
-
-Escenarios:
-
-- Primera inferencia con el modelo descargado.
-- Inferencias calientes secuenciales.
-- Lotes de embeddings.
-- Concurrencia controlada.
-- Búsqueda pgvector por tamaño del corpus.
-- Flujo completo: embedding más consulta.
-- Frases cercanas al máximo de 280 caracteres.
-- Entradas Unicode, acentos y puntuación.
-
-Se reportarán mediana, p95, máximo, memoria pico y condiciones del equipo. El objetivo de cinco segundos se evaluará sobre el flujo caliente normal. El tiempo de descarga inicial quedará documentado como requisito de instalación o preparación.
-
-### 5.5 Experimento 5 — Fallos y alternativas
-
-Se comprobarán:
-
-- Modelo ausente o descarga incompleta.
-- Ejecución sin red después de haber cacheado el modelo.
-- Embeddings inválidos.
-- Timeout.
-- PostgreSQL o pgvector no disponible.
-- Incompatibilidad entre la dimensión almacenada y el modelo.
-- Cambio de modelo o revisión.
-
-Alternativas si la inferencia local no resulta viable:
-
-1. Hugging Face Inference Endpoint o API.
-2. Servicio aislado de inferencia en Python, manteniendo el backend principal en Node.js.
-3. Modelo multilingüe más pequeño.
-4. Búsqueda exacta sin índice vectorial para el volumen del MVP.
-5. Estrategia híbrida textual más embeddings, manteniendo separados los resultados semánticos.
-
-## 6. Criterios para seleccionar el modelo
-
-La decisión no dependerá solamente del accuracy. Se considerarán:
-
-- Calidad sobre el holdout.
-- Recall y F1 de duplicados.
-- Naturaleza de los errores.
-- Latencia p95.
-- Memoria pico.
-- Tamaño y tiempo de arranque.
-- Compatibilidad estable con Node.js.
-- Complejidad de uso.
-- Licencia y reproducibilidad.
-- Dimensión y costo de persistencia.
-
-Se fijarán el identificador y la revisión exacta del modelo. La metadata futura debería conservar, como mínimo, modelo, revisión, dimensión, estrategia de pooling y normalización, y versión del pipeline. Embeddings generados con configuraciones diferentes no deben mezclarse silenciosamente.
-
-## 7. Riesgos principales
-
-- Sobreajuste del umbral si se calibra y evalúa sobre los mismos 20 pares.
-- Etiquetas humanas ambiguas.
-- Puntajes no comparables entre modelos.
-- Diferencias causadas por prefijos, pooling, normalización o cuantización.
-- Confundir la primera descarga con la latencia normal.
-- Consumo de memoria del runtime ONNX.
-- Falsos negativos en negaciones, números y entidades.
-- Acoplamiento del esquema `vector(n)` a un modelo determinado.
-- Pérdida de recall al introducir índices aproximados prematuramente.
-- Resultados dependientes del hardware y de la revisión del modelo.
-
-## 8. Alcance aprobado para el primer experimento
-
-Se aprueba comenzar con la siguiente configuración:
-
-- Inferencia local en Node.js como línea base.
-- Los cuatro modelos candidatos indicados.
-- Conjunto de 60 pares en español, dividido en 40 para calibración y 20 para holdout.
-- Embeddings `float32` normalizados.
-- Sin PostgreSQL durante el Experimento 1.
-- Sin seleccionar todavía un umbral o modelo ganador.
-- Todo el código experimental quedará aislado en `experiments/semantic-similarity/`.
-
-Los experimentos posteriores requieren una nueva propuesta y aprobación antes de su implementación.
+Comparar más modelos, crear nuevos conjuntos de evaluación, reentrenar, añadir servicios de inferencia, índices vectoriales aproximados o garantías de producción multiusuario. Si luego se ajusta el umbral o el método, los conjuntos ya examinados sirven para diagnóstico, no para afirmar una mejora independiente.

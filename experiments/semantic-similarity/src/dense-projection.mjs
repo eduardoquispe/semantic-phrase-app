@@ -58,7 +58,7 @@ async function downloadProjection(projection, destination) {
   await rename(temporaryPath, destination);
 }
 
-export async function loadDenseProjection(projection, cacheRoot) {
+export async function loadDenseProjection(projection, cacheRoot, { offline = false } = {}) {
   const destination = path.join(
     cacheRoot,
     projection.repository,
@@ -71,6 +71,7 @@ export async function loadDenseProjection(projection, cacheRoot) {
     file = await readFile(destination);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
+    if (offline) throw new Error(`Falta la proyección en caché: ${destination}`, { cause: error });
     await downloadProjection(projection, destination);
     file = await readFile(destination);
   }

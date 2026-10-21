@@ -39,14 +39,17 @@ async function run() {
   const args = process.argv.slice(2);
   let sourcePath = null;
   let directory = "data";
+  let modelKey = null;
   for (let index = 0; index < args.length; index += 2) {
     if (!args[index + 1]) {
-      throw new Error("Uso: node src/calibrate.mjs [--dataset-dir data/v2] [--from-report <reporte.json>]");
+      throw new Error("Uso: node src/calibrate.mjs [--dataset-dir data/v2] [--model <clave>] [--from-report <reporte.json>]");
     }
     if (args[index] === "--from-report" && !sourcePath) sourcePath = path.resolve(args[index + 1]);
     else if (args[index] === "--dataset-dir" && directory === "data") directory = args[index + 1];
+    else if (args[index] === "--model" && !modelKey) modelKey = args[index + 1];
     else throw new Error(`Argumento desconocido o repetido: ${args[index]}`);
   }
+  if (modelKey && !Object.hasOwn(models, modelKey)) throw new Error(`Modelo desconocido: ${modelKey}`);
   const datasetDirectory = resolveDatasetDirectory(experimentRoot, directory);
   const calibrationPath = path.join(datasetDirectory, "pairs.calibration.json");
   const holdoutPath = path.join(datasetDirectory, "pairs.holdout.json");
@@ -71,18 +74,18 @@ async function run() {
   }
 
   const results = {};
-  for (const modelKey of Object.keys(models)) {
-    console.log(`Calibrando ${modelKey}...`);
+  for (const key of modelKey ? [modelKey] : ["minilm", "e5", "distiluse", "bge_m3"]) {
+    console.log(`Calibrando ${key}...`);
     const evaluation = source
       ? {
-          model: source.results?.[modelKey]?.model,
-          scoredPairs: scoredPairsFromReport(source, modelKey, calibration.dataset)
+          model: source.results?.[key]?.model,
+          scoredPairs: scoredPairsFromReport(source, key, calibration.dataset)
         }
-      : await evaluateModel(modelKey, calibrationPath);
-    if (!evaluation.model) throw new Error(`Falta la configuración del modelo ${modelKey}`);
+      : await evaluateModel(key, calibrationPath);
+    if (!evaluation.model) throw new Error(`Falta la configuración del modelo ${key}`);
     const selection = selectThreshold(evaluation.scoredPairs, minimumAccuracy);
     const maximumAccuracy = Math.max(...selection.evaluations.map(({ accuracy }) => accuracy));
-    results[modelKey] = {
+    results[key] = {
       model: evaluation.model,
       eligible: selection.eligible,
       maximumAccuracy,

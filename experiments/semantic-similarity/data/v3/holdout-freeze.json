@@ -1,0 +1,11 @@
+{
+  "sourceCalibration": "results/experiment-02-calibration-1792555544459.json",
+  "calibrationHash": "a6bf440a333347447727261c2754c1ab47c31a6fbcdbcfd2ec0792f1659901ff",
+  "holdoutHash": "27edf0ddf7ccee6b193154f35f3595a3e11f66e5c05676ef097f0b9850b7d395",
+  "thresholds": {
+    "minilm": 0.6763989282227754,
+    "bge_m3": 0.777858735884295
+  },
+  "minimumCorrect": 15,
+  "tieBreak": ["correct", "f2", "recall", "falsePositives", "runtimeMs"]
+}

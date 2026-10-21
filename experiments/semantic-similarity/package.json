@@ -10,10 +10,17 @@
     "dataset:validate": "node src/validate-dataset.mjs",
     "test": "node --test",
     "calibrate": "node src/calibrate.mjs",
-    "holdout": "node src/evaluate-holdout.mjs"
+    "holdout": "node src/evaluate-holdout.mjs",
+    "flow": "node src/run-flow-prototype.mjs",
+    "test:flow-db": "node --test test/flow-database.test.mjs",
+    "flow:calibrate": "node src/evaluate-flow-dataset.mjs calibrate",
+    "flow:holdout": "node src/evaluate-flow-dataset.mjs holdout",
+    "pairs:holdout:v3": "node src/evaluate-pairs-holdout-v3.mjs",
+    "failure:offline": "node src/probe-offline-model.mjs"
   },
   "dependencies": {
-    "@huggingface/transformers": "3.8.1"
+    "@huggingface/transformers": "3.8.1",
+    "pg": "^8.16.3"
   },
   "engines": {
     "node": ">=22"

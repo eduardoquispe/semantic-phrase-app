@@ -31,6 +31,17 @@ npm run benchmark:quick
 
 Los pesos se almacenan en `.cache/huggingface/` y los resultados JSON en `results/`. Ambos se excluyen de Git.
 
+## Experimento 5 — Fallos y ejecución sin red
+
+Con MiniLM ya descargado en la caché, la sonda prueba tres condiciones: caché vacía, caché incompleta y carga local sin red. Deshabilita explícitamente el acceso remoto; los dos primeros casos deben fallar y el tercero producir un embedding finito de 384 dimensiones.
+
+```bash
+npm run failure:offline
+npm test
+```
+
+La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) resume la evidencia útil para el MVP. Las pruebas con PostgreSQL real y la aplicación final figuran en el [plan de ejecución](../../docs/01-ai-feasibility/experiment-plan.md).
+
 ## Alcance de las métricas
 
 - Tiempo de carga del pipeline.
@@ -54,53 +65,54 @@ La primera ejecución puede incluir descarga. Las siguientes reutilizan la cach�
 - E5 antepone `query: ` a ambos textos porque la tarea es similitud simétrica.
 - Cada modelo corre en un proceso separado para aislar mejor memoria y fallos.
 
-## Experimento 2 — Calidad y calibración
+## Evaluaciones anteriores de pares
 
-La propuesta metodológica está en `docs/01-ai-feasibility/experiment-02-proposal.md`. Los datos se separan en 40 pares de calibración y 20 de holdout. Mientras su campo `status` sea `pending_ground_truth_approval`, los comandos que generan embeddings se detendrán antes de cargar un modelo.
+Los conjuntos y evaluadores de pares permanecen en `data/` y `src/`. Sus holdouts ya fueron consultados y no se reutilizarán para afirmar una mejora. La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) registra los resultados necesarios para elegir MiniLM en el MVP. La comparación de más modelos queda fuera del [plan de ejecución](../../docs/01-ai-feasibility/experiment-plan.md).
 
-Validar estructura, balance y separación de los datos:
+## Prototipo del flujo con PostgreSQL y pgvector
 
-```bash
-npm run dataset:validate
-npm test
-```
+El prototipo en `src/flow-prototype.mjs` y `src/flow-store.mjs` prueba el recorrido de validación por modelo. Requiere PostgreSQL con la extensión pgvector. El esquema aislado se encuentra en `sql/flow-prototype.sql`; las tablas `prototype_*` no son el esquema final de la aplicación.
 
-Después de la aprobación humana de textos, etiquetas y particiones, ambos archivos deben cambiar a `"status": "approved"`. Solo entonces puede ejecutarse la calibración:
+Para levantar una base local de prueba con Docker:
 
 ```bash
-npm run calibrate
+docker compose -f compose.flow.yml up -d --wait
+export DATABASE_URL=postgres://flow:flow@localhost:55432/semantic_flow_test
+npm run flow -- init
+npm run flow -- add --text "Olvidé mi contraseña y necesito entrar"
+npm run flow -- add --text "Mañana lloverá en Lima"
+npm run flow -- index --model minilm
+npm run flow -- index --model bge_m3
+npm run flow -- validate --model minilm --threshold 0.70 --text "Necesito recuperar el acceso"
+npm run flow -- validate --model bge_m3 --threshold 0.70 --text "Necesito recuperar el acceso"
 ```
 
-El mínimo vigente es 75 % de accuracy en calibración y en holdout. Para recalcular la selección con puntajes ya guardados, sin volver a inferir ni puntuar el holdout, use:
+`0.70` es solo un valor de ejemplo para probar el comando; **no es un umbral calibrado ni aprobado**. El comando exige un umbral explícito. `add` crea una frase activa, `index` genera los embeddings pendientes para un modelo y `deactivate --id N` la excluye de búsquedas futuras. Al añadir frases nuevas se debe volver a ejecutar `index` para cada modelo. La validación es de solo lectura y nunca guarda la frase nueva. El resultado incluye candidata, puntaje (`1 - distancia coseno`), método textual o semántico, alerta, versión de configuración del embedding, fecha y tiempos de comprobación del corpus, inferencia, búsqueda y total. Estos tiempos se miden después de cargar el modelo en el proceso; la carga inicial debe medirse aparte si se evalúa el arranque en frío.
+
+La coincidencia textual normalizada tiene prioridad y puntaje 1; si no existe, pgvector ordena por distancia coseno exacta y desempata por `id` ascendente. Solo participan frases activas con embeddings de la versión y dimensión del modelo solicitado. Si falta algún embedding activo, la búsqueda semántica falla explícitamente para evitar un resultado incompleto. No se mezclan los vectores de 384 dimensiones de MiniLM con los de 1024 de BGE-M3. La versión registrada identifica modelo de ejecución, cuantización, pooling y normalización; al cambiar pesos o tokenizador se debe cambiar esa versión y reindexar.
+
+Para comprobar el SQL contra la base aislada:
 
 ```bash
-npm run calibrate -- --from-report results/experiment-02-calibration-<timestamp>.json
+export PGVECTOR_TEST_URL=postgres://flow:flow@localhost:55432/semantic_flow_test
+npm run test:flow-db
 ```
 
-El nuevo manifiesto conserva los hashes de ambas particiones y la ruta del reporte fuente. Los manifiestos creados con el mínimo histórico de 80 % se mantienen como evidencia, pero el runner final los rechaza.
+La prueba de integración vacía las tablas `prototype_*` de esa base y usa embeddings sintéticos para comprobar recuperación, separación de modelos, empates, coincidencia textual y exclusión de eliminadas. Las pruebas unitarias se ejecutan con `npm test`.
 
-El comando produce un manifiesto en `results/` con los hashes de ambas particiones y los umbrales congelados. La evaluación final requiere ese archivo y una confirmación deliberada:
+## Evaluación completa de frases nuevas
+
+Los conjuntos nuevos están en `data/flow/calibration.json` (40 casos) y `data/flow/holdout.json` (20 casos). Cada registro contiene la frase nueva, tres frases activas identificadas, la alerta esperada, la clave de la frase pertinente si existe, una categoría y una justificación. Las familias y los textos de ambas particiones son disjuntos. Los casos negativos incluyen acciones opuestas, negaciones y otras intenciones. Las etiquetas fueron creadas para esta prueba y constan como `labeled`.
+
+`src/evaluate-flow-dataset.mjs` vacía las tablas experimentales por caso, inserta exactamente las mismas frases activas para ambos modelos, genera e indexa sus embeddings por separado y llama a `createFlow.validate`. La calibración examina todos los cortes posibles entre puntajes y maximiza decisiones correctas; si hay empate, minimiza falsos positivos, luego falsos negativos y elige el umbral más alto. El manifiesto guarda hashes de ambos conjuntos y ambos umbrales. La fase holdout verifica el manifiesto, comprueba que no haya familias ni textos compartidos y solo permite crear un resultado final. No se reutilizan los holdouts históricos de pares.
+
+Para una evaluación nueva, con una base local aislada y sin los archivos `results/flow-*.json` de esta corrida:
 
 ```bash
-npm run holdout -- --manifest results/experiment-02-calibration-<timestamp>.json --confirm-final
+docker compose -f compose.flow.yml up -d --wait
+export DATABASE_URL=postgres://flow:flow@localhost:55432/semantic_flow_test
+npm run flow:calibrate
+npm run flow:holdout
 ```
 
-El holdout no debe ejecutarse más de una vez ni utilizarse para reajustar umbrales, etiquetas o configuración. Si se necesita iterar después de abrirlo, se debe crear un holdout nuevo.
-
-El holdout de este conjunto se ejecutó el 2026-10-20 con el manifiesto `results/experiment-02-calibration-1792554852198.json`. El resultado está en `results/experiment-02-holdout-1792554957505.json` y su resumen versionable en `docs/01-ai-feasibility/experiment-02-results.md`. No vuelva a ejecutar `npm run holdout` sobre esta partición.
-
-## Conjunto v2 evaluado
-
-`data/v2/` contiene 40 pares de calibración y 20 de holdout basados en DEC-020. El usuario aprobó sus etiquetas y justificaciones antes de la calibración. Puede validar su estructura sin ejecutar modelos:
-
-```bash
-npm run dataset:validate -- --dataset-dir data/v2
-```
-
-Ambos archivos tienen estado `"approved"`. La calibración nueva se ejecutó con:
-
-```bash
-npm run calibrate -- --dataset-dir data/v2
-```
-
-El manifiesto `results/experiment-02-calibration-1792555544459.json` incluye `datasetDirectory: "data/v2"`. MiniLM y BGE-M3 fueron elegibles en calibración. El holdout v2 se ejecutó una sola vez el 2026-10-20: ambos obtuvieron 65 % y fueron rechazados. El resultado JSON está en `results/experiment-02-holdout-1792555624880.json` y el reporte versionable en `docs/01-ai-feasibility/experiment-02-v2-results.md`. No vuelva a ejecutar `npm run holdout` con ese manifiesto.
+La corrida del 2026-10-21 ya consumió el holdout. Los resultados principales están en la [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md); los JSON detallados están en `results/`, excluido de Git. Los tiempos reportados corresponden a `validate` con el modelo cargado y las frases activas ya indexadas; no incluyen carga inicial, inserción ni indexación.

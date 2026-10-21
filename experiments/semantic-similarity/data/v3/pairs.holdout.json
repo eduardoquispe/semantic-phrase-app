@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "partition": "holdout",
+  "status": "labeled",
+  "pairs": [
+    {"id":"v3-s-01","family":"v3-llaves-auto","category":"paraphrase","label":"similar","textA":"Perdí las llaves del carro y no puedo abrirlo.","textB":"Extravié la llave del automóvil; necesito entrar al vehículo.","rationale":"Misma pérdida de llave e imposibilidad de acceder al auto."},
+    {"id":"v3-s-02","family":"v3-cargo-duplicado","category":"paraphrase","label":"similar","textA":"Me cobraron dos veces la compra de ayer.","textB":"La misma adquisición aparece duplicada en mis cargos.","rationale":"Ambas reportan un cobro duplicado."},
+    {"id":"v3-s-03","family":"v3-ruta-bus","category":"paraphrase","label":"similar","textA":"¿Qué bus debo tomar para llegar al museo?","textB":"Necesito saber qué autobús me lleva al museo.","rationale":"Misma consulta de transporte hacia el museo."},
+    {"id":"v3-s-04","family":"v3-cita-veterinaria","category":"detail_variation","label":"similar","textA":"Reserva una consulta veterinaria para mi gato el lunes.","textB":"Reserva una consulta veterinaria para mi gato el martes.","rationale":"Misma gestión de cita; cambia el día."},
+    {"id":"v3-s-05","family":"v3-boleta-pago","category":"paraphrase","label":"similar","textA":"No encuentro el comprobante de mi último pago.","textB":"Necesito una copia del recibo de la transacción reciente.","rationale":"Misma solicitud de comprobante de pago."},
+    {"id":"v3-s-06","family":"v3-lavadora-fuga","category":"paraphrase","label":"similar","textA":"Sale agua por debajo de la lavadora.","textB":"La máquina de lavar tiene una fuga en la base.","rationale":"Misma avería de pérdida de agua."},
+    {"id":"v3-s-07","family":"v3-envio-direccion","category":"detail_variation","label":"similar","textA":"Entrega el paquete en la calle Lima 52.","textB":"Entrega el paquete en la calle Lima 58.","rationale":"Misma instrucción de entrega con número corregido."},
+    {"id":"v3-s-08","family":"v3-licencia-expirada","category":"paraphrase","label":"similar","textA":"Mi permiso de conducir ya caducó.","textB":"La licencia para manejar se encuentra vencida.","rationale":"Mismo estado de vencimiento de licencia."},
+    {"id":"v3-s-09","family":"v3-presentacion-archivo","category":"paraphrase","label":"similar","textA":"No abre el archivo de la presentación.","textB":"La diapositiva guardada no se puede visualizar.","rationale":"Ambas describen un problema al abrir la presentación."},
+    {"id":"v3-s-10","family":"v3-mascota-perdida","category":"paraphrase","label":"similar","textA":"Se escapó mi perro y no sé dónde está.","textB":"Busco a mi can extraviado después de que salió de casa.","rationale":"Mismo reporte de mascota perdida."},
+    {"id":"v3-n-01","family":"v3-abono-activar","category":"opposite_action","label":"not_similar","textA":"Activa el abono mensual del gimnasio.","textB":"Desactiva el abono mensual del gimnasio.","rationale":"Activar y desactivar el abono son acciones opuestas."},
+    {"id":"v3-n-02","family":"v3-ventana-estado","category":"negation","label":"not_similar","textA":"La ventana del dormitorio quedó cerrada.","textB":"La ventana del dormitorio no quedó cerrada.","rationale":"La negación invierte el estado de la ventana."},
+    {"id":"v3-n-03","family":"v3-reembolso-aprobado","category":"negation","label":"not_similar","textA":"Aprobaron el reembolso de mi compra.","textB":"Rechazaron el reembolso de mi compra.","rationale":"Aprobación y rechazo son resultados incompatibles."},
+    {"id":"v3-n-04","family":"v3-registro-asistencia","category":"opposite_action","label":"not_similar","textA":"Marca mi asistencia al taller de mañana.","textB":"Anula mi asistencia al taller de mañana.","rationale":"Registrar y anular la asistencia son gestiones contrarias."},
+    {"id":"v3-n-05","family":"v3-saldo-tarjeta","category":"different_intent","label":"not_similar","textA":"Consulta el saldo de mi tarjeta de transporte.","textB":"Recarga mi tarjeta de transporte.","rationale":"Consultar el saldo y recargar son intenciones distintas."},
+    {"id":"v3-n-06","family":"v3-archivo-compartir","category":"different_intent","label":"not_similar","textA":"Comparte el documento con el equipo.","textB":"Elimina el documento del equipo.","rationale":"Compartir y eliminar el documento son acciones diferentes."},
+    {"id":"v3-n-07","family":"v3-alquiler-pago","category":"negation","label":"not_similar","textA":"Pagué el alquiler correspondiente a octubre.","textB":"Todavía debo el alquiler correspondiente a octubre.","rationale":"Pago completado y deuda pendiente son estados opuestos."},
+    {"id":"v3-n-08","family":"v3-pedido-color","category":"different_intent","label":"not_similar","textA":"Quiero cambiar el color del vestido que compré.","textB":"Quiero saber cuándo entregarán el vestido que compré.","rationale":"Cambiar una característica y consultar entrega son intenciones distintas."},
+    {"id":"v3-n-09","family":"v3-cuenta-bloqueo","category":"opposite_action","label":"not_similar","textA":"Bloquea el acceso de este usuario a la cuenta.","textB":"Restablece el acceso de este usuario a la cuenta.","rationale":"Bloquear y restablecer el acceso son operaciones opuestas."},
+    {"id":"v3-n-10","family":"v3-puerta-edificio","category":"negation","label":"not_similar","textA":"La puerta del edificio está abierta.","textB":"La puerta del edificio está cerrada.","rationale":"La puerta no puede estar abierta y cerrada a la vez."}
+  ]
+}

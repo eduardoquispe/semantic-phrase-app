@@ -8,7 +8,7 @@
 | Estado | Approved |
 | Metodología | AI-First / Human-in-the-Loop |
 | Fuente oficial | `docs/00-discovery/reto-tecnico.md` |
-| Última actualización | 2026-10-20 |
+| Última actualización | 2026-10-21 |
 
 ---
 
@@ -37,7 +37,7 @@ Proporcionar una aplicación web simple que use IA para detectar posibles duplic
 |---|---|---|---|---|
 | SC-001 | El usuario puede validar, guardar, listar y eliminar frases | Pruebas de aceptación | CONFIRMED | Reto: Detalle y alcance obligatorio |
 | SC-002 | Una coincidencia potencial nunca se persiste sin decisión humana explícita | Pruebas de aceptación | CONFIRMED | Reto: Detalle del reto |
-| SC-003 | La evaluación alcanza al menos 75 % de acierto sobre un mínimo de 20 pares en español, equilibrados entre similares y no similares | Evaluación de IA reproducible | CONFIRMED | DEC-019; criterio interno de calidad |
+| SC-003 | El MVP integra un modelo de Hugging Face, evalúa el flujo semántico en español y comunica sus errores observados | Demostración funcional y resultados reproducibles | CONFIRMED | DEC-022 |
 | SC-004 | Toda frase guardada conserva la metadata de la validación que autorizó su persistencia | Pruebas de integración y consulta SQL | CONFIRMED | Reto: Alcance obligatorio; DEC-008 |
 | SC-005 | La validación responde en hasta 5 segundos en condiciones normales | Medición de rendimiento | CONFIRMED | DEC-011 |
 | SC-006 | Los fallos de IA o persistencia no producen guardados parciales y no eliminan el texto ingresado | Pruebas de error | CONFIRMED | DEC-002 |
@@ -232,8 +232,8 @@ La interfaz no muestra la frase más cercana ni su puntaje cuando el umbral no h
 | AFR-005 | Evaluar el mayor puntaje contra un umbral configurable | CONFIRMED | Reto: Implementación esperada |
 | AFR-006 | Distinguir claramente los puntajes textuales deterministas de los puntajes semánticos del modelo | CONFIRMED | DEC-003, DEC-008 |
 | AFR-007 | No habilitar un fallback de guardado sin validación cuando el modelo falle | CONFIRMED | DEC-002 |
-| AFR-008 | Evaluar modelos y umbrales con un conjunto mínimo de 20 pares etiquetados en español | CONFIRMED | DEC-019 |
-| AFR-009 | Alcanzar al menos 75 % de acierto sobre el conjunto acordado antes de aceptar el modelo y umbral | CONFIRMED | DEC-019 |
+| AFR-008 | Evaluar el flujo de búsqueda y umbral con al menos 20 validaciones etiquetadas en español, cada una con una frase nueva y frases activas almacenadas | CONFIRMED | DEC-021 |
+| AFR-009 | Registrar aciertos, falsos positivos y falsos negativos del flujo; el 75 % es una meta orientativa, no un bloqueo del MVP | CONFIRMED | DEC-022 |
 
 ### 7.2 Resultado funcional de validación
 
@@ -251,13 +251,13 @@ Esta descripción no constituye un contrato de API ni define el esquema SQL.
 
 ### 7.3 Evaluación y calibración
 
-- El conjunto de evaluación debe estar equilibrado entre pares similares y no similares.
-- Las etiquetas humanas actúan como referencia de verdad para esta evaluación acotada.
-- Los pares se utilizan para evaluación y calibración, no para entrenamiento.
-- El modelo específico y el valor inicial del umbral permanecen pendientes hasta AI Feasibility.
-- El mínimo vigente es 75 % (DEC-019). El Experimento 2 obtuvo 50 % con la definición original y 65 % con la definición ampliada de DEC-020 en sus respectivos holdouts. Ninguno acreditó un modelo o umbral; ambos reportes finales se conservan como evidencia.
+- El conjunto de evaluación debe estar equilibrado entre validaciones que requieren alerta y validaciones que no.
+- Cada caso incluye una frase nueva, frases activas almacenadas y la decisión esperada; las etiquetas humanas actúan como referencia de verdad.
+- Los casos se utilizan para evaluación y calibración, no para entrenamiento.
+- Se elige MiniLM para implementar el MVP con inferencia local en Node.js: entre los modelos probados en el flujo completo obtuvo 12/20 decisiones correctas frente a 10/20 de BGE-M3, con menor tiempo y consumo de recursos. Es una elección práctica para este reto técnico, no una garantía de calidad general.
+- El 75 % fue una meta interna de los experimentos, no un requisito del reto ni una condición definitiva para entregar el MVP. Los resultados y sus errores se mantienen visibles; no se presentan los 12/20 como cumplimiento de esa meta. Se prioriza completar el flujo funcional con el modelo disponible sin costo de API y ejecución local (DEC-022).
 - En una evaluación nueva, `similar` significa que conviene advertir sobre un **posible** duplicado para revisión humana. Si se conserva la misma acción y el mismo asunto, un cambio de nombre, cantidad, fecha, hora o lugar puede seguir siendo `similar`; el usuario decide si guarda ambas frases. Las acciones opuestas, negaciones que invierten el hecho y solicitudes de intención distinta son `not_similar` (DEC-020).
-- Esta definición requiere un conjunto nuevo con etiquetas aprobadas y un holdout independiente antes de aceptar un modelo. No se reetiqueta el holdout ya evaluado para reclamar el mínimo de calidad.
+- Una nueva evaluación independiente será necesaria si más adelante se afirma una mejora de calidad o se cambia el umbral; no bloquea la implementación del MVP. No se reetiquetan los holdouts ya evaluados para reclamar la meta anterior.
 - El fine-tuning no forma parte del MVP.
 
 ---
@@ -365,11 +365,11 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 **When** el sistema recibe el fallo,  
 **Then** evita un estado parcial, informa el error y mantiene una interfaz coherente con los datos efectivamente persistidos.
 
-### AC-014 — Calidad mínima del modelo
+### AC-014 — Calidad documentada del modelo
 
-**Given** un conjunto de al menos 20 pares etiquetados en español y equilibrados,  
-**When** se evalúan el modelo y el umbral seleccionados,  
-**Then** al menos 75 % de los pares reciben la clasificación esperada.
+**Given** un conjunto de al menos 20 validaciones completas en español, equilibradas entre casos con y sin alerta,
+**When** se ejecutan la búsqueda en PostgreSQL y la comparación con el umbral configurado,
+**Then** se registran los aciertos, falsos positivos, falsos negativos y límites observados, sin exigir un porcentaje fijo para entregar el MVP.
 
 ### AC-015 — Metadata de validación
 
@@ -437,8 +437,10 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | DEC-016 | Exigir pruebas automatizadas para el núcleo del backend | El testing es un criterio valorado y protege el flujo crítico | CONFIRMED |
 | DEC-017 | Mantener la metadata conceptual independiente de su diseño SQL o JSON | Evita anticipar decisiones de arquitectura en Discovery | CONFIRMED |
 | DEC-018 | Separar **Validar** y **Guardar**; validar nunca persiste y guardar exige una validación vigente; ante coincidencia se usa **Guardar de todos modos** o **Cancelar** | Instrucción explícita del usuario para alinear el flujo con la validación previa al guardado del reto; sustituye DEC-001 | CONFIRMED |
-| DEC-019 | Exigir al menos 75 % de acierto sobre un mínimo de 20 pares equilibrados en español | Cambio explícito del usuario de 80 % a 75 %; es un criterio interno y no un porcentaje impuesto por el reto; sustituye DEC-010 | CONFIRMED |
+| DEC-019 | Exigir al menos 75 % de acierto sobre un mínimo de 20 pares equilibrados en español | Criterio anterior sustituido por la evaluación del flujo completo en DEC-021 | SUPERSEDED |
 | DEC-020 | Advertir sobre posibles duplicados aunque cambie un detalle de nombre, cantidad, fecha, hora o lugar si se conserva la acción y el asunto; tratar acciones opuestas, negaciones y distintas intenciones como registros diferentes | El usuario aclaró que estas variaciones pequeñas pueden merecer revisión humana; se mantiene la decisión explícita antes de guardar | CONFIRMED |
+| DEC-021 | Evaluar la búsqueda en PostgreSQL y el umbral sobre al menos 20 validaciones completas, con mínimo de 75 % de decisiones correctas | Criterio histórico de evaluación; su mínimo obligatorio se sustituye por DEC-022 | SUPERSEDED |
+| DEC-022 | Elegir MiniLM para el MVP con inferencia local y tratar el 75 % como meta orientativa, sin bloquear la implementación | El reto pide una integración semántica funcional, no un porcentaje; MiniLM ofrece el mejor balance observado entre calidad del flujo, tiempo y recursos para un modelo sin costo de API | CONFIRMED |
 
 ---
 
@@ -446,9 +448,9 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 
 | ID | Pregunta | Tratamiento recomendado | Estado | Fase responsable |
 |---|---|---|---|---|
-| Q-001 | ¿Qué modelo de embeddings de Hugging Face ofrece mejor desempeño para las frases del reto? | Comparar candidatos con el conjunto etiquetado | PENDING | AI Feasibility |
-| Q-002 | ¿Cuál es el valor inicial del umbral? | Calibrarlo después de elegir el modelo | PENDING | AI Feasibility |
-| Q-003 | ¿La inferencia se consume como servicio o se ejecuta localmente? | Evaluar latencia, costo, reproducibilidad y complejidad | PENDING | Arquitectura |
+| Q-001 | ¿Qué modelo de embeddings de Hugging Face se usará en el MVP? | [MiniLM con inferencia local en Node.js](../01-ai-feasibility/model-decision.md) (DEC-022) | RESOLVED | AI Feasibility |
+| Q-002 | ¿Cuál es el valor inicial del umbral? | `0.8538613695045911` para MiniLM, configurable; [resultado y límites](../01-ai-feasibility/model-decision.md) | RESOLVED | AI Feasibility |
+| Q-003 | ¿La inferencia se consume como servicio o se ejecuta localmente? | Local en Node.js para el MVP (DEC-022) | RESOLVED | Arquitectura |
 | Q-004 | ¿Cuál será el tiempo máximo antes de declarar timeout? | Definirlo a partir del modo de inferencia y mantener el objetivo normal de 5 segundos | PENDING | Arquitectura |
 | Q-005 | ¿Cómo se representan frases y metadata en SQL y qué información complementaria usaría JSON? | Mantener como campos estructurados los datos principales y evaluar JSON solo para detalles variables | PENDING | Arquitectura |
 | Q-006 | ¿Cuáles son los contratos concretos de la API REST? | Derivarlos de los flujos y criterios aprobados | PENDING | Arquitectura / SDD |
@@ -468,7 +470,7 @@ Las preguntas abiertas son técnicas y no bloquean la aprobación del alcance de
 - [x] Alcance y exclusiones confirmados
 - [x] Requisitos funcionales y reglas de negocio acordados
 - [x] Flujos HITL validados
-- [x] Requisitos de IA y criterio mínimo de calidad acordados
+- [x] Requisitos de IA y meta orientativa de calidad acordados
 - [x] Requisitos no funcionales revisados
 - [x] Criterios de aceptación y escenarios borde definidos
 - [x] Decisiones confirmadas registradas
@@ -479,17 +481,14 @@ Las preguntas abiertas son técnicas y no bloquean la aprobación del alcance de
 | Estado de aprobación | APPROVED |
 | Aprobado por | Product Owner |
 | Fecha de aprobación | 2026-10-20 |
-| Autorización | Aprobación explícita otorgada durante la sesión de Product Discovery; cambios posteriores registrados en DEC-018, DEC-019 y DEC-020 por instrucciones explícitas del usuario |
+| Autorización | Aprobación explícita otorgada durante la sesión de Product Discovery; cambios posteriores registrados en DEC-018 a DEC-022 por instrucciones explícitas del usuario |
 
 ---
 
 ## 14. Next Steps
 
-1. Iterar AI Feasibility con la definición de posible duplicado de DEC-020, revisar un conjunto nuevo y validarlo con un holdout independiente.
-2. Diseñar en Figma los estados inicial, validando, éxito, advertencia, confirmación, error y eliminación.
-3. Definir arquitectura, persistencia SQL, estrategia de inferencia y contratos REST.
-4. Convertir este Product Brief en especificaciones SDD verificables con Spec Kit.
-5. Implementar primero el flujo crítico y sus pruebas automatizadas.
-6. Preparar datos de demostración, documentación de instalación y evidencia reproducible de la integración de IA.
+1. Seguir el [plan de ejecución del MVP](../01-ai-feasibility/experiment-plan.md) con MiniLM local y un umbral inicial configurable.
+2. Implementar el flujo de validar, decidir y guardar; completar lista, eliminación, manejo de errores y pruebas del backend con PostgreSQL.
+3. Entregar README de instalación, variables de entorno, API documentada y una demostración reproducible de la integración de IA.
 
 Cualquier cambio posterior a un requisito `CONFIRMED` debe registrarse como una nueva decisión y reflejarse en los artefactos derivados.
