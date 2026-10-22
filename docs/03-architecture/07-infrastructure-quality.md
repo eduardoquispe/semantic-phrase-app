@@ -1,5 +1,15 @@
 # Bloque 07 — Entorno Local, Testing y Calidad
 
+Cambio incompatible (2026-10-22): `validationId` sustituye a `validationToken`, sin alias.
+Se devuelve el UUID v4 aleatorio de la validación persistida, sin firma ni JWT.
+Los JWT anteriores dejan de formar parte del contrato; las filas existentes pueden
+referenciarse por su UUID. No hay migración ni secreto de firma requerido.
+El registro queda fuera de F002: deberá buscar por `validationId`, comprobar
+vigencia (`now >= expiresAt` implica expiración), texto, confirmación y estado no
+consumido, y consumir la validación atómicamente con el guardado de la frase.
+TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
+
+
 **Proyecto:** Semantic Phrase App  
 **Estado:** Aprobado — B07-D01 a B07-D12, con ajustes posteriores expresamente confirmados  
 **Fecha:** 21 de octubre de 2026  
@@ -17,7 +27,7 @@ Se conservan las decisiones funcionales y arquitectónicas de los bloques anteri
 - **B03:** organización de React por funcionalidades; Vitest, React Testing Library y MSW; tests colocalizados; TanStack Query, Axios, React Hook Form/Zod y demás decisiones frontend ya aprobadas.
 - **B04:** MiniLM de Hugging Face ejecutado localmente mediante LangChain y ONNX q8; embeddings de 384 dimensiones, mean pooling y normalización L2; umbral inicial configurable `0.8538613695045911`, sin garantía de exactitud perfecta ni modelo adicional.
 - **B05:** PostgreSQL + pgvector, Drizzle ORM y migraciones Drizzle Kit; comparación textual y Top-1 vectorial exacto, validaciones temporales y registro/consumo atómico.
-- **B06:** API REST v1, Problem Details, filtro global de excepciones, token JWT temporal de validación HITL (no autenticación de usuarios), CORS local, Swagger local, rate limiting y configuración de seguridad aprobada.
+- **B06:** API REST v1, Problem Details, filtro global de excepciones, referencia UUID temporal de validación HITL (no autenticación de usuarios), CORS local, Swagger local, rate limiting y configuración de seguridad aprobada.
 
 Los contratos, invariantes, DTO, endpoints, códigos HTTP y políticas de IA, persistencia y seguridad se mantienen en sus documentos de origen; este bloque no los redefine.
 
@@ -85,10 +95,11 @@ Cada aplicación tendrá su `.env.example` versionado y `.env` local ignorado po
 | Ámbito | Configuración y responsabilidades |
 |---|---|
 | `apps/frontend` | Solo configuración pública, por ejemplo `VITE_API_BASE_URL`; nunca secretos ni credenciales |
-| `apps/backend` | Conexión a PostgreSQL, modelo/configuración de IA, umbral, puerto, CORS, TTL, rate limit y secreto del JWT temporal |
+| `apps/backend` | Conexión a PostgreSQL, modelo/configuración de IA, umbral, puerto, CORS, TTL y rate limit |
 | Docker Compose (raíz) | Variables locales en `.env` raíz para credenciales y configuración de PostgreSQL, sin versionar valores sensibles |
 
-Preservar los nombres de configuración definidos en B06, cuando proceda: `PORT`, `CORS_ORIGINS`, `PHRASE_VALIDATION_JWT_SECRET`, `PHRASE_VALIDATION_TTL_MINUTES`, `RATE_LIMIT_TTL_MS`, `RATE_LIMIT_MAX`, `AI_SIMILARITY_THRESHOLD`. No iniciar el backend con secreto JWT ausente o insuficiente; el token es una prueba de validación temporal, no un mecanismo de login. La definición final de otras variables necesarias debe ser explícita en los `.env.example`.
+
+Preservar `PORT`, `CORS_ORIGINS`, `PHRASE_VALIDATION_TTL_MINUTES`, `RATE_LIMIT_TTL_MS`, `RATE_LIMIT_MAX` y `AI_SIMILARITY_THRESHOLD` cuando proceda. No se requiere secreto de firma.
 
 **Scripts:** cada proyecto controla sus scripts en su propio `package.json`.
 
@@ -109,7 +120,7 @@ Pruebas `*.spec.ts` colocalizadas para reglas de dominio y casos de uso, emplean
 
 - Validación sin coincidencia y detección de posible duplicado según el umbral.
 - Confirmación HITL requerida cuando corresponda y prohibición de guardar sin la confirmación válida.
-- Token de validación vencido, inválido, consumido o reutilizado.
+- Referencia de validación vencido, inválido, consumido o reutilizado.
 - Fallos de embeddings o persistencia no confundidos con ausencia de coincidencias.
 - Reutilización del embedding validado al registrar, sin ejecutar nueva inferencia.
 - Invariantes de `Phrase` y `PhraseValidation` y reglas de listado pertinentes.
@@ -133,7 +144,7 @@ Se **conserva la evaluación experimental existente** de MiniLM como evidencia t
 - Usar `Logger` nativo de NestJS en consola (`log`, `warn`, `error` y `debug` cuando se necesite).
 - Reutilizar el **único** `GlobalExceptionFilter` definido en B06; mapea errores controlados y excepciones HTTP a Problem Details, sin cambiar el catálogo aprobado.
 - Diferenciar resultados funcionales de similitud (incluida la alerta HITL) de fallos técnicos.
-- Registrar contexto técnico suficiente sin volcar secretos JWT, credenciales, stacks al cliente ni textos completos de frases innecesariamente.
+- Registrar contexto técnico suficiente sin volcar credenciales, stacks al cliente ni textos completos de frases innecesariamente.
 - Sin Pino, rotación de archivos, OpenTelemetry ni proveedores de observabilidad.
 
 ## 8. Calidad y validaciones estáticas

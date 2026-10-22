@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Contrato REST del MVP local de validación semántica de frases. La coincidencia
-    potencial es un resultado de negocio exitoso, no un error HTTP. El token de
+    potencial es un resultado de negocio exitoso, no un error HTTP. La referencia de
     validación permite registrar una frase previamente validada; no autentica usuarios.
 servers:
   - url: http://localhost:3000/api/v1
@@ -53,7 +53,7 @@ paths:
       operationId: createPhrase
       summary: Registrar frase validada
       description: |
-        Comprueba token firmado, frase asociada, vigencia y consumo; exige confirmed=true
+        Comprueba referencia UUID, frase asociada, vigencia y consumo; exige confirmed=true
         solo cuando la validación almacenada requiere HITL. Inserción y consumo son
         atómicos. No recalcula el embedding.
       requestBody:
@@ -65,12 +65,12 @@ paths:
               withConfirmation:
                 value:
                   text: Me gusta viajar a Cusco
-                  validationToken: '<signed-jwt>'
+                  validationId: '550e8400-e29b-41d4-a716-446655440000'
                   confirmed: true
               withoutMatch:
                 value:
                   text: Me gusta viajar a Cusco
-                  validationToken: '<signed-jwt>'
+                  validationId: '550e8400-e29b-41d4-a716-446655440000'
       responses:
         '201':
           description: Frase creada; validación consumida
@@ -97,8 +97,12 @@ paths:
       description: |
         Genera embedding mediante MiniLM local, prioriza coincidencia textual normalizada
         y, si no existe, consulta Top-1 exacto por similitud coseno. Persiste la
-        validación temporal y emite un JWT con vigencia inicial de 15 minutos.
-        Un posible duplicado no constituye un error HTTP.
+        validación temporal y emite un UUID con vigencia inicial de 15 minutos.
+        Un posible duplicado no constituye un error HTTP. La igualdad textual prima
+        incluso con vectores almacenados incompatibles; siempre se genera un embedding
+        nuevo válido. Colección vacía es éxito; sin igualdad textual ni vectores
+        compatibles en una colección no vacía se responde 500 INTERNAL_ERROR.
+        No se admiten parámetros de consulta ni se limita el volumen de solicitudes.
       requestBody:
         required: true
         content:
@@ -118,18 +122,29 @@ paths:
                   summary: Coincidencia vectorial
                   value:
                     data:
-                      validationToken: '<signed-jwt>'
+                      validationId: '550e8400-e29b-41d4-a716-446655440000'
                       expiresAt: '2026-10-21T19:15:00Z'
                       requiresConfirmation: true
                       match:
                         type: vector
                         phrase: { id: 123e4567-e89b-42d3-a456-426614174000, text: Me encanta viajar a Cusco }
                         similarityScore: 0.92
+                belowThreshold:
+                  summary: Candidata vectorial bajo el umbral
+                  value:
+                    data:
+                      validationId: '550e8400-e29b-41d4-a716-446655440000'
+                      expiresAt: '2026-10-21T19:15:00Z'
+                      requiresConfirmation: false
+                      match:
+                        type: vector
+                        phrase: { id: 123e4567-e89b-42d3-a456-426614174000, text: Me encanta viajar a Cusco }
+                        similarityScore: 0.4
                 exactMatch:
                   summary: Coincidencia textual normalizada
                   value:
                     data:
-                      validationToken: '<signed-jwt>'
+                      validationId: '550e8400-e29b-41d4-a716-446655440000'
                       expiresAt: '2026-10-21T19:15:00Z'
                       requiresConfirmation: true
                       match:
@@ -140,12 +155,11 @@ paths:
                   summary: Sin candidata
                   value:
                     data:
-                      validationToken: '<signed-jwt>'
+                      validationId: '550e8400-e29b-41d4-a716-446655440000'
                       expiresAt: '2026-10-21T19:15:00Z'
                       requiresConfirmation: false
                       match: null
         '400': { $ref: '#/components/responses/BadRequest' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
@@ -160,6 +174,14 @@ components:
         maxLength expresa longitud de cadena; la implementación debe comprobar
         explícitamente los puntos de código Unicode y el texto después de trim.
       examples: [Me gusta viajar a Cusco]
+    ValidationPhraseText:
+      type: string
+      minLength: 1
+      maxLength: 280
+      description: |
+        De 1 a 280 puntos de código Unicode del original, incluidos espacios externos.
+        trim no vacío, sin controles Unicode Cc. Signos y emojis permitidos.
+        El original se conserva; normalización solo para comparar espacios y mayúsculas.
     Phrase:
       type: object
       additionalProperties: false
@@ -209,17 +231,17 @@ components:
       additionalProperties: false
       required: [text]
       properties:
-        text: { $ref: '#/components/schemas/PhraseText' }
+        text: { $ref: '#/components/schemas/ValidationPhraseText' }
     CreatePhraseRequest:
       type: object
       additionalProperties: false
-      required: [text, validationToken]
+      required: [text, validationId]
       properties:
         text: { $ref: '#/components/schemas/PhraseText' }
-        validationToken:
+        validationId:
           type: string
-          minLength: 1
-          description: JWT firmado HS256 de propósito phrase-registration. No es un token de autenticación.
+          format: uuid
+          description: UUID v4 de la validación persistida. No autentica personas.
         confirmed:
           type: boolean
           default: false
@@ -233,9 +255,9 @@ components:
     PhraseValidationResult:
       type: object
       additionalProperties: false
-      required: [validationToken, expiresAt, requiresConfirmation, match]
+      required: [validationId, expiresAt, requiresConfirmation, match]
       properties:
-        validationToken: { type: string, minLength: 1, description: JWT temporal firmado, no credencial de sesión. }
+        validationId: { type: string, format: uuid, description: UUID v4 de la validación persistida. }
         expiresAt: { type: string, format: date-time }
         requiresConfirmation: { type: boolean }
         match:
@@ -268,10 +290,10 @@ components:
     FieldError:
       type: object
       additionalProperties: false
-      required: [field, message]
+      required: [field, messages]
       properties:
         field: { type: string }
-        message: { type: string }
+        messages: { type: array, items: { type: string } }
     ProblemDetails:
       type: object
       description: |
@@ -287,7 +309,7 @@ components:
           type: string
           enum:
             - VALIDATION_ERROR
-            - INVALID_VALIDATION_TOKEN
+            - INVALID_VALIDATION_ID
             - PHRASE_MISMATCH
             - VALIDATION_EXPIRED
             - VALIDATION_ALREADY_USED
@@ -301,7 +323,7 @@ components:
           items: { $ref: '#/components/schemas/FieldError' }
   responses:
     BadRequest:
-      description: DTO o parámetros inválidos, token inválido o texto no correspondiente a la validación
+      description: DTO o parámetros inválidos, referencia inválida o texto no correspondiente a la validación
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/ProblemDetails' }
@@ -310,7 +332,7 @@ components:
             status: 400
             detail: Los datos enviados no son válidos
             code: VALIDATION_ERROR
-            errors: [{ field: text, message: Máximo 500 caracteres }]
+            errors: [{ field: text, messages: [Texto inválido] }]
     Conflict:
       description: Validación expirada, consumida o que exige confirmación
       content:
@@ -342,7 +364,11 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/ProblemDetails' }
-          example: { title: Service Unavailable, status: 503, detail: El servicio de IA no está disponible., code: AI_UNAVAILABLE }
+          examples:
+            ai:
+              value: { title: Service Unavailable, status: 503, detail: El servicio de IA no está disponible., code: AI_UNAVAILABLE }
+            database:
+              value: { title: Service Unavailable, status: 503, detail: La base de datos no está disponible., code: DATABASE_UNAVAILABLE }
     DatabaseUnavailable:
       description: Persistencia no disponible
       content:
