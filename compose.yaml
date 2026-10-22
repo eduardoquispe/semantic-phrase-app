@@ -10,5 +10,30 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
+    platform: linux/arm64
+    command:
+      - --model-id
+      - sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      - --revision
+      - e8f8c211226b894fcb81acc59f3b34ba3efd5f42
+      - --pooling
+      - mean
+      - --dtype
+      - float32
+      - --auto-truncate=false
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - embeddings_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10m
+      retries: 3
+
 volumes:
   postgres_data:
+  embeddings_data:

@@ -1,5 +1,15 @@
 # Bloque 04 — Arquitectura de Inteligencia Artificial
 
+Cambio incompatible (2026-10-22): `validationId` sustituye a `validationToken`, sin alias.
+Se devuelve el UUID v4 aleatorio de la validación persistida, sin firma ni JWT.
+Los JWT anteriores dejan de formar parte del contrato; las filas existentes pueden
+referenciarse por su UUID. No hay migración ni secreto de firma requerido.
+El registro queda fuera de F002: deberá buscar por `validationId`, comprobar
+vigencia (`now >= expiresAt` implica expiración), texto, confirmación y estado no
+consumido, y consumir la validación atómicamente con el guardado de la frase.
+TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
+
+
 **Proyecto:** Semantic Phrase App  
 **Estado:** Aprobado — decisiones B04-D01 a B04-D11  
 **Fecha:** 21 de octubre de 2026  
@@ -19,7 +29,7 @@ La solución se ejecuta dentro de un **monolito modular NestJS/TypeScript**, con
 ### 2.1 Decisiones heredadas
 
 - `01-system-overview.md`: monolito modular, pnpm workspaces, REST síncrono, Hugging Face local mediante LangChain, puertos hexagonales, HITL y modelos sustituibles.
-- `02-backend-architecture.md`: `PhrasesModule`, puertos abstractos TypeScript, `EmbeddingGeneratorPort`, `PhraseRepositoryPort`, `PhraseValidationRepositoryPort`, `PhraseRegistrationPort`; tres casos de uso; validación temporal con token firmado y persistencia previa del embedding; **Jest** para pruebas backend.
+- `02-backend-architecture.md`: `PhrasesModule`, puertos abstractos TypeScript, `EmbeddingGeneratorPort`, `PhraseRepositoryPort`, `PhraseValidationRepositoryPort`, `PhraseRegistrationPort`; tres casos de uso; validación temporal con referencia UUID y persistencia previa del embedding; **Jest** para pruebas backend.
 - `03-frontend-architecture.md`: feature `phrases` con Screaming Architecture; el frontend interpreta las posibles coincidencias como resultados funcionales y los fallos de inferencia como errores técnicos.
 - Evaluación de modelos suministrada por el usuario, titulada **“Evaluación y decisión de modelo para el MVP”**, fechada 20–21/10/2026: prueba de viabilidad local y del flujo completo con PostgreSQL y pgvector.
 
@@ -74,13 +84,13 @@ Responsabilidades del adaptador:
 4. Validar dimensión 384, finitud de los componentes y norma esperada; rechazar vectores inválidos.
 5. Devolver metadatos efectivos de modelo y convertir fallos de librería en errores técnicos del puerto.
 
-El adaptador no escoge candidatos, no consulta SQL, no aplica umbrales ni emite tokens. LangChain se mantiene como detalle de infraestructura; **no se crearán chains, agentes o herramientas LLM** para un problema de embeddings simples.
+El adaptador no escoge candidatos, no consulta SQL, no aplica umbrales ni emite referencias. LangChain se mantiene como detalle de infraestructura; **no se crearán chains, agentes o herramientas LLM** para un problema de embeddings simples.
 
 ## 4. Puertos, adaptadores y responsabilidades
 
 ### 4.1 Contrato conceptual del puerto
 
-`EmbeddingGeneratorPort` es una **clase abstracta TypeScript**, utilizable como token de Dependency Injection de NestJS, conforme al Bloque 02. Su operación principal es conceptualmente `generate(text) → EmbeddingResult`; no se exige otra operación de negocio para el MVP.
+`EmbeddingGeneratorPort` es una **clase abstracta TypeScript**, utilizable como referencia de Dependency Injection de NestJS, conforme al Bloque 02. Su operación principal es conceptualmente `generate(text) → EmbeddingResult`; no se exige otra operación de negocio para el MVP.
 
 | Campo de `EmbeddingResult` | Significado |
 |---|---|
@@ -95,7 +105,7 @@ El adaptador no escoge candidatos, no consulta SQL, no aplica umbrales ni emite 
 
 | Elemento | Responsabilidad |
 |---|---|
-| `ValidatePhraseUseCase` | Obtener embedding, solicitar Top-1, comparar contra umbral y establecer el resultado funcional; coordinar validación temporal y token |
+| `ValidatePhraseUseCase` | Obtener embedding, solicitar Top-1, comparar contra umbral y establecer el resultado funcional; coordinar validación temporal y referencia |
 | `EmbeddingGeneratorPort` | Abstraer generación y metadatos del embedding |
 | `HuggingFaceEmbeddingAdapter` | LangChain + MiniLM local, inicialización, transformación y validación técnica de vectores |
 | `PhraseRepositoryPort` | Ofrecer recuperación conceptual de la coincidencia más cercana, sin exponer pgvector al caso de uso |
@@ -115,7 +125,7 @@ No se creará `AiModule` separado ni `InfrastructureModule` genérico sin necesi
 5. El caso de uso solicita al `PhraseRepositoryPort` la coincidencia compatible de **mayor similitud** mediante búsqueda exacta Top-1 en PostgreSQL/pgvector.
 6. El repositorio devuelve, cuando existe, la frase más cercana y su puntuación coseno. Una coincidencia textual normalizada puede tener prioridad, como en el flujo ensayado, sin asumir aquí reglas textuales no detalladas en los documentos base.
 7. `ValidatePhraseUseCase` compara la puntuación con el umbral vigente **del modelo activo** y determina si debe emitirse una alerta de posible duplicado.
-8. La validación temporal conserva el embedding generado y la información necesaria para que el registro posterior no requiera inferencia adicional; el mecanismo de token y su persistencia siguen el Bloque 02.
+8. La validación temporal conserva el embedding generado y la información necesaria para que el registro posterior no requiera inferencia adicional; el mecanismo de referencia y su persistencia siguen el Bloque 02.
 9. El frontend presenta la coincidencia y su puntaje; cuando corresponde, solicita confirmación humana antes de guardar.
 10. `CreatePhraseUseCase` verifica las condiciones aprobadas, usa el embedding anterior y coordina guardado y consumo de la validación mediante la operación atómica ya prevista.
 
@@ -125,7 +135,7 @@ No se creará `AiModule` separado ni `InfrastructureModule` genérico sin necesi
 
 ### 6.1 Generación y normalización
 
-Se aplicará el mismo procesamiento al embedding de consulta y a los almacenados: tokenización/modelo efectivos, mean pooling, normalización L2 y dimensión 384. No se aplicará chunking: las entradas del MVP son frases cortas, no documentos extensos. La normalización no garantiza distinguir negaciones, fechas, entidades ni acciones opuestas.
+Se aplicará el mismo procesamiento al embedding de consulta y a los almacenados: referenciaización/modelo efectivos, mean pooling, normalización L2 y dimensión 384. No se aplicará chunking: las entradas del MVP son frases cortas, no documentos extensos. La normalización no garantiza distinguir negaciones, fechas, entidades ni acciones opuestas.
 
 La similitud coseno entre vectores `a` y `b` es `cos(a,b) = (a·b) / (||a|| ||b||)`. Con vectores unitarios, equivale al producto punto, pero el repositorio utilizará semántica de similitud **coseno**, no una distancia no equivalente asumida por conveniencia. La conversión de distancia a puntuación debe preservar orden y significado y validarse con casos conocidos.
 
@@ -170,7 +180,7 @@ La forma exacta de inyectar estos parámetros y la ruta de caché son decisiones
 | Embedding incompatible con los almacenados | Fallar y señalar problema de compatibilidad; nunca comparar espacios diferentes |
 | Similitud sobre el umbral | Resultado funcional de posible duplicado, no una excepción HTTP |
 
-No se prescribe aquí el código HTTP exacto ni el esquema de errores REST, que corresponden al bloque de API. No se debe emitir token válido o permitir el guardado basado en una validación que falló técnicamente.
+No se prescribe aquí el código HTTP exacto ni el esquema de errores REST, que corresponden al bloque de API. No se debe emitir referencia válido o permitir el guardado basado en una validación que falló técnicamente.
 
 ## 9. Versionado, migración y cambio de proveedores
 
@@ -195,7 +205,7 @@ El MVP **no incluirá** orquestador de migraciones, doble escritura permanente, 
 | Nivel | Pruebas relevantes |
 |---|---|
 | Unitario: `ValidatePhraseUseCase` | Usa puertos simulados; aplica umbral; distingue candidato/no candidato; no guarda cuando falla inferencia o búsqueda |
-| Unitario: `CreatePhraseUseCase` | Reutiliza embedding de validación; no vuelve a llamar al modelo; respeta token, estado y confirmación según backend |
+| Unitario: `CreatePhraseUseCase` | Reutiliza embedding de validación; no vuelve a llamar al modelo; respeta referencia, estado y confirmación según backend |
 | Contrato del adaptador | `EmbeddingResult` con 384 números finitos, L2 correcta e identidad de modelo/versión coherente |
 | Integración real | Verificar LangChain + Transformers.js + artefacto ONNX `q8`; comparar comportamiento con baseline de evaluación; carga única y reutilización |
 | Integración de recuperación | Top-1 exacto, orden correcto, coseno consistente y filtrado por versión compatible |
@@ -249,7 +259,7 @@ sequenceDiagram
     UC->>UC: Evaluar umbral del modelo
     UC->>Val: Registrar validacion y embedding
     Val-->>UC: Validacion temporal
-    UC-->>API: Resultado funcional + token
+    UC-->>API: Resultado funcional + referencia
     API-->>Web: Coincidencia y necesidad de confirmar
     alt Posible duplicado
         Web-->>Usuario: Mostrar alerta y solicitar decision
@@ -260,7 +270,7 @@ sequenceDiagram
     Note over API,Val: El guardado posterior reutiliza el embedding y consume la validacion atomicamente
 ```
 
-Ante fallos técnicos, la rama de validación finaliza sin resultado exitoso ni token usable para guardar.
+Ante fallos técnicos, la rama de validación finaliza sin resultado exitoso ni referencia usable para guardar.
 
 ### 11.3 Sustitución futura de proveedor
 
@@ -301,7 +311,7 @@ El diagrama muestra **extensibilidad de diseño**, no dos proveedores implementa
 - Confirmar la revisión exacta de pesos/artefacto ONNX y que el wrapper de LangChain reproduce el pooling, L2 y las salidas evaluadas en Transformers.js `3.8.1`.
 - Fijar una identificación concreta de la versión efectiva de embeddings, consistente con los metadatos devueltos por el puerto.
 - Ajustar y probar el timeout de inferencia en el entorno de ejecución definitivo; no se ha aprobado un número de milisegundos.
-- Definir contratos REST, detalle del token y códigos de error en el bloque API.
+- Definir contratos REST, detalle de la referencia y códigos de error en el bloque API.
 - Diseñar esquema, mecanismos de búsqueda compatible por versión y eventual migración manual en el bloque persistencia, sin modificar las decisiones lógicas aquí establecidas.
 - Conservar como limitación aceptada del reto los **8 falsos negativos de 10 positivos** del holdout del flujo, hasta disponer de nuevos datos que justifiquen un cambio.
 

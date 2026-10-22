@@ -1,5 +1,15 @@
 # Bloque 05 — Arquitectura de Persistencia
 
+Cambio incompatible (2026-10-22): `validationId` sustituye a `validationToken`, sin alias.
+Se devuelve el UUID v4 aleatorio de la validación persistida, sin firma ni JWT.
+Los JWT anteriores dejan de formar parte del contrato; las filas existentes pueden
+referenciarse por su UUID. No hay migración ni secreto de firma requerido.
+El registro queda fuera de F002: deberá buscar por `validationId`, comprobar
+vigencia (`now >= expiresAt` implica expiración), texto, confirmación y estado no
+consumido, y consumir la validación atómicamente con el guardado de la frase.
+TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
+
+
 **Proyecto:** Semantic Phrase App  
 **Estado:** Aprobado — decisiones B05-D01 a B05-D23  
 **Fecha:** 21 de octubre de 2026  
@@ -10,7 +20,7 @@
 
 El MVP utiliza **PostgreSQL + extensión pgvector** para almacenar frases, embeddings y validaciones temporales. La API **NestJS/TypeScript** accede a los datos mediante **Drizzle ORM** y tres adaptadores de infraestructura que implementan los puertos aprobados del módulo `PhrasesModule`. Se mantienen dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`.
 
-La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones, se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se emite un token firmado. `CreatePhraseUseCase` verifica el token y la confirmación HITL cuando corresponda, y el adaptador de registro consume la validación y crea la frase **en una misma transacción**, sin volver a ejecutar el modelo.
+La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones, se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se devuelve el UUID persistido. `CreatePhraseUseCase` verifica la referencia y la confirmación HITL cuando corresponda, y el adaptador de registro consume la validación y crea la frase **en una misma transacción**, sin volver a ejecutar el modelo.
 
 **Principios de alcance:** simplicidad del MVP; integridad de la operación de guardado; SQL y Drizzle restringidos a infraestructura; sin HNSW/IVFFlat, workers, colas, tablas de embeddings separadas, repositorios genéricos ni Unit of Work personalizado.
 
@@ -19,11 +29,11 @@ La validación semántica se produce **antes** del registro definitivo: se gener
 | Fuente | Restricciones heredadas |
 |---|---|
 | `docs/03-architecture/01-system-overview.md` | Monolito modular; pnpm workspaces; NestJS REST síncrono; backend hexagonal; frontend React por funcionalidades; HITL. |
-| `docs/03-architecture/02-backend-architecture.md` | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; tres casos de uso; `PhraseRepositoryPort`, `PhraseValidationRepositoryPort` y `PhraseRegistrationPort`; token firmado y registro atómico; Jest. |
+| `docs/03-architecture/02-backend-architecture.md` | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; tres casos de uso; `PhraseRepositoryPort`, `PhraseValidationRepositoryPort` y `PhraseRegistrationPort`; referencia UUID y registro atómico; Jest. |
 | `docs/03-architecture/04-ai-architecture.md` | MiniLM `Xenova/paraphrase-multilingual-MiniLM-L12-v2`, ONNX `q8`, 384 dimensiones, mean pooling, L2; coseno; Top-1 exacto; umbral inicial `0.8538613695045911`; un solo modelo activo y versionado compatible. |
 | Evaluación proporcionada anteriormente, **“Evaluación y decisión de modelo para el MVP”** | Línea base de evaluación de MiniLM y viabilidad del flujo PostgreSQL/pgvector; no supone garantía de detección semántica perfecta. |
 
-**Limitación documental:** no se pudo verificar una copia con la ruta exacta `docs/00-discovery/product-brief.md` ni `docs/01-ai-feasibility/model-evaluation.md`. La evaluación original sí está disponible bajo otro nombre. No se atribuyen a esos dos archivos reglas adicionales no comprobadas. El contrato REST exacto, la forma del token y los límites textuales se definirán donde corresponda, sin inventarlos aquí.
+**Limitación documental:** no se pudo verificar una copia con la ruta exacta `docs/00-discovery/product-brief.md` ni `docs/01-ai-feasibility/model-evaluation.md`. La evaluación original sí está disponible bajo otro nombre. No se atribuyen a esos dos archivos reglas adicionales no comprobadas. El contrato REST exacto, la forma de la referencia y los límites textuales se definirán donde corresponda, sin inventarlos aquí.
 
 ## 3. Tecnologías y decisiones de infraestructura
 
@@ -223,7 +233,7 @@ flowchart TB
 | `DrizzlePhraseValidationRepository` | `phrase_validations` | Crear validación temporal, recuperar validación cuando aplique. |
 | `DrizzlePhraseRegistrationAdapter` | Ambas | Consumir condicionalmente validación e insertar frase dentro de **una transacción**. |
 
-Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como tokens de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Los adaptadores son especializados por **responsabilidad**, no por obligación «una tabla = un repositorio». No se implementa un `UnitOfWork` ni un coordinador transaccional genérico.
+Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Los adaptadores son especializados por **responsabilidad**, no por obligación «una tabla = un repositorio». No se implementa un `UnitOfWork` ni un coordinador transaccional genérico.
 
 `PhrasePersistenceMapper` y `PhraseValidationPersistenceMapper` traducen registros de Drizzle a entidades y viceversa **cuando se necesita reconstruir un Aggregate Root**. Para respuestas de consulta como `{id, text, similarity}` o proyecciones de lista, se pueden devolver resultados tipados de aplicación sin construir entidades completas. No se crea mapper genérico. Las conversiones de fechas, nulabilidad y vector deben ser explícitas cuando cambien de representación.
 
@@ -260,11 +270,11 @@ La configuración Drizzle Kit debe descubrir los esquemas de `PhrasesModule` y a
 
 Una validación está **pendiente y vigente** si `consumed_at IS NULL AND expires_at > NOW()`; está **consumida** si `consumed_at IS NOT NULL`, y **expirada sin consumo** si no está consumida y pasó su fecha de expiración. No existe columna `status`.
 
-`PHRASE_VALIDATION_TTL_MINUTES=15` es el valor inicial configurable. La aplicación calcula `expires_at` al validar y el token firmado debe respetar esa misma expiración. No se requiere scheduler para invalidarla: expiración **lógica**.
+`PHRASE_VALIDATION_TTL_MINUTES=15` es el valor inicial configurable. La aplicación calcula `expires_at` al validar y la referencia UUID debe respetar esa misma expiración. No se requiere scheduler para invalidarla: expiración **lógica**.
 
 ### 9.2. Transacción de registro
 
-`CreatePhraseUseCase` comprueba firma y asociación del token, texto autorizado, versión, vigencia y confirmación HITL cuando aplique; la infraestructura garantiza que el **consumo y la inserción sean atómicos**.
+`CreatePhraseUseCase` busca por validationId y comprueba asociación de la referencia, texto autorizado, versión, vigencia y confirmación HITL cuando aplique; la infraestructura garantiza que el **consumo y la inserción sean atómicos**.
 
 Dentro de **una transacción Drizzle** con aislamiento predeterminado PostgreSQL `READ COMMITTED`:
 
@@ -369,7 +379,7 @@ sequenceDiagram
     UC->>UC: Determinar alerta HITL
     UC->>VR: Guardar validación y embedding temporal
     VR-->>UC: id y expiración
-    UC-->>FE: Resultado + token firmado
+    UC-->>FE: Resultado + referencia UUID
     FE-->>User: Mostrar coincidencia y confirmación si aplica
 ```
 
@@ -395,7 +405,7 @@ sequenceDiagram
 | B05-D16 | Jest unitario solamente, por ahora | Sin garantía automática de SQL/pgvector. |
 | B05-D17 | Schemas en `PhrasesModule` y conexión técnica compartida | Organización por negocio; configuración Drizzle debe incluir schemas. |
 | B05-D18 | Un `pg.Pool` compartido | Reutilización; gestionar cierre del pool. |
-| B05-D19 | TTL 15 minutos configurable por ENV | Token y persistencia deben tener expiración consistente. |
+| B05-D19 | TTL 15 minutos configurable por ENV | Referencia y persistencia deben tener expiración consistente. |
 | B05-D20 | Validez vectorial en IA + dimensión en BD | Evita lógica duplicada; no valida norma L2 en BD. |
 | B05-D21 | Coherencia de similitud solo en aplicación | SQL simple; sin `CHECK` semánticos. |
 | B05-D22 | Prioridad textual exacta normalizada | Evita consulta vectorial innecesaria; no fabricar coseno. |
@@ -403,7 +413,7 @@ sequenceDiagram
 
 ## 15. Pendientes delimitados y criterios de cierre
 
-Este documento **cierra el diseño del Bloque 05** sin anticipar implementación. Siguen pendientes del bloque API o de la ejecución del proyecto: contratos HTTP, firma y claims exactos del token, reglas definitivas de entrada, naming preciso de identificadores de versión de modelo, ajuste de configuración de conexiones, tiempos/retención de limpieza manual, verificación de wrapper de IA y comprobaciones manuales sobre PostgreSQL real. No son autorización para alterar silenciosamente decisiones B01–B05.
+Este documento **cierra el diseño del Bloque 05** sin anticipar implementación. Siguen pendientes del bloque API o de la ejecución del proyecto: contratos HTTP, formato UUID de la referencia, reglas definitivas de entrada, naming preciso de identificadores de versión de modelo, ajuste de configuración de conexiones, tiempos/retención de limpieza manual, verificación de wrapper de IA y comprobaciones manuales sobre PostgreSQL real. No son autorización para alterar silenciosamente decisiones B01–B05.
 
 **Criterio de aceptación:** el diseño mantiene dos tablas, la búsqueda Top-1 exacta, el almacenamiento 384d/versionado, el flujo HITL, tres adaptadores y el guardado transaccional; sin índice ANN, infraestructura adicional ni ejecución de código.
 
