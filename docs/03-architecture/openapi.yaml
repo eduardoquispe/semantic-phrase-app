@@ -53,9 +53,11 @@ paths:
       operationId: createPhrase
       summary: Registrar frase validada
       description: |
-        Comprueba referencia UUID, frase asociada, vigencia y consumo; exige confirmed=true
+        Comprueba referencia UUID v4, original exacto, modelo/versión, vigencia y consumo; exige confirmed=true
         solo cuando la validación almacenada requiere HITL. Inserción y consumo son
-        atómicos. No recalcula el embedding.
+        atómicos. No recalcula el embedding ni la similitud; permite duplicados confirmados.
+        No admite query ni impone límite global por volumen. Referencia inexistente:
+        400 INVALID_VALIDATION_ID. Modelo/versión incompatible: 500 INTERNAL_ERROR seguro.
       requestBody:
         required: true
         content:
@@ -86,7 +88,6 @@ paths:
                       createdAt: '2026-10-21T19:02:00Z'
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/DatabaseUnavailable' }
   /phrase-validations:
@@ -237,15 +238,15 @@ components:
       additionalProperties: false
       required: [text, validationId]
       properties:
-        text: { $ref: '#/components/schemas/PhraseText' }
+        text: { $ref: '#/components/schemas/ValidationPhraseText' }
         validationId:
           type: string
           format: uuid
-          description: UUID v4 de la validación persistida. No autentica personas.
+          description: UUID v4 de la validación persistida. Obligatorio; ausente, no-v4 o inexistente produce INVALID_VALIDATION_ID. No autentica personas.
         confirmed:
           type: boolean
           default: false
-          description: Omitido equivale a false; true es obligatorio para coincidencias que requieren confirmación.
+          description: Omitido equivale a false; null, cadenas y números son inválidos. Solo true real satisface una alerta almacenada.
     PhraseEnvelope:
       type: object
       additionalProperties: false

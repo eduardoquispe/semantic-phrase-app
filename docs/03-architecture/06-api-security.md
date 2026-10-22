@@ -94,7 +94,7 @@ Petición, con confirmación cuando corresponda:
 { "text": "Me gusta viajar a Cusco", "validationId": "550e8400-e29b-41d4-a716-446655440000", "confirmed": true }
 ```
 
-`confirmed` es un booleano **opcional**, interpretado como `false` si está ausente. No se convierte texto `"true"` ni número `1` a booleano. Si la validación persistida tiene `requires_confirmation = true`, solo `confirmed: true` autoriza registrar. Si no requiere confirmación, se permite omitirlo. Cancelar en frontend equivale a **no llamar** a este endpoint. Se comprueban identidad, texto asociado, versión compatible, expiración y consumo antes y dentro de la operación atómica de registro. No se vuelve a invocar MiniLM.
+`confirmed` es un booleano **opcional**, interpretado como `false` si está ausente. No se convierte texto `"true"` ni número `1` a booleano; `null` también es inválido. Si la validación persistida tiene `requires_confirmation = true`, solo `confirmed: true` autoriza registrar. Si no requiere confirmación, se permite omitirlo. Cancelar en frontend equivale a **no llamar** a este endpoint. Se comprueban identidad, texto asociado, versión compatible, expiración y consumo antes y dentro de la operación atómica de registro. No se vuelve a invocar MiniLM ni buscar similitud. Se permiten duplicados confirmados; no se admite query ni límite global por volumen.
 
 Resultado:
 
@@ -137,7 +137,7 @@ Se omiten `embedding`, `normalized_text`, metadatos de modelo y validaciones tem
 ## 6. DTOs, validaciones y normalización
 
 - Utilizar `class-validator`, `class-transformer` y **`ValidationPipe` global** con `whitelist`, `forbidNonWhitelisted` y transformación **controlada** de query params. No coercionar el booleano `confirmed` desde strings en el cuerpo.
-- `text` obligatorio y cadena real, 1 a **500 puntos de código Unicode** después de aplicar las reglas de aceptación; `trim` no debe dejarlo vacío. Rechazar caracteres de control no permitidos, conservando tildes y signos. El número exacto de puntos de código se verifica en TS, porque la longitud de una cadena JS en unidades UTF-16 puede diferir de la cantidad de puntos de código.
+- `text` para validación y registro: cadena real de 1 a **280 puntos de código Unicode del original**, incluidos espacios externos; `trim` no vacío y sin controles Unicode `Cc`. Signos y emojis sin letras son válidos; conservar el original. Lectura histórica hasta 500 puntos de código. El número exacto de puntos de código se verifica en TS, porque la longitud de una cadena JS en unidades UTF-16 puede diferir de la cantidad de puntos de código.
 - Distinción deliberada: validar la **admisibilidad** del texto en HTTP y dominio; la **normalización para igualdad textual** previamente aprobada (`trim`, minúsculas y compresión de espacios, preservando tildes/puntuación) se realiza con la misma función pura del Bloque 05, no la reinventa este documento.
 - No alterar silenciosamente el texto que se muestra o se guarda por la normalización de búsqueda. La asociación de la referencia comprueba la frase validada; un texto distinto requiere otra validación.
 - DTOs y mappers, cuando aporten valor, permanecen en `modules/phrases/infrastructure/inbound/http`, sin importar NestJS al dominio ni transportar Drizzle hacia el cliente.
@@ -159,19 +159,18 @@ Las respuestas fallidas utilizan `application/problem+json` y un subconjunto de 
 | HTTP | Código | Descripción |
 |---|---|---|
 | 400 | `VALIDATION_ERROR` | DTO o query inválidos; `errors` por campo cuando corresponda |
-| 400 | `INVALID_VALIDATION_ID` | validationId ausente o UUID malformado |
+| 400 | `INVALID_VALIDATION_ID` | validationId ausente, UUID no v4 o referencia inexistente |
 | 400 | `PHRASE_MISMATCH` | Texto no corresponde a la validación almacenada |
 | 409 | `VALIDATION_EXPIRED` | Validación vencida; React conserva texto y ofrece validar nuevamente |
 | 409 | `VALIDATION_ALREADY_USED` | Validación consumida (incluye consumo concurrente perdedor) |
 | 409 | `CONFIRMATION_REQUIRED` | Falta confirmación explícita para una coincidencia |
-| 429 | `RATE_LIMIT_EXCEEDED` | 60 solicitudes/minuto/IP globales |
-| 500 | `INTERNAL_ERROR` | Fallo inesperado ocultando detalles internos |
+| 500 | `INTERNAL_ERROR` | Fallo inesperado o modelo/versión incompatible, ocultando detalles internos |
 | 503 | `AI_UNAVAILABLE` | Error de inicialización, timeout o fallo técnico de inferencia |
 | 503 | `DATABASE_UNAVAILABLE` | Persistencia no disponible |
 
 El **único** `GlobalExceptionFilter` en `shared/infrastructure/http/filters` traduce `DomainError`, `ApplicationError`, `HttpException` y errores técnicos controlados a Problem Details. Cualquier excepción inesperada produce 500 seguro. El adaptador de infraestructura traduce excepciones de su proveedor a categorías controladas, sin exponer SQL, stack traces, secretos o rutas locales. Registrar información técnica mínima sin contenido del UUID. El frontend distingue fallos técnicos de resultados funcionales; la coincidencia semántica es respuesta **201**, nunca error 409 por el solo hecho de existir.
 
-**Ambigüedad resuelta conservadoramente:** si la validación referenciada es inexistente por expiración/limpieza, la API debe rechazar de forma segura sin revelar más de lo necesario; el mapeo preciso depende de que el repositorio pueda diferenciar expirado, consumido y no encontrado. No se falseará su estado ni se retornará éxito.
+Una referencia inexistente, incluida limpieza física, produce 400 `INVALID_VALIDATION_ID`; no se infiere expiración ni consumo previo. Modelo/versión incompatible produce 500 `INTERNAL_ERROR` seguro.
 
 ## 8. Seguridad HTTP y alcance local
 
@@ -180,7 +179,7 @@ El **único** `GlobalExceptionFilter` en `shared/infrastructure/http/filters` tr
 | Entorno | Sólo localhost; React `http://localhost:5173`, API `http://localhost:3000` |
 | CORS | Origen exacto configurable (`CORS_ORIGINS`), métodos GET, POST y preflight OPTIONS; sin credenciales cross-origin por defecto |
 | Cabeceras | Capacidades nativas de la versión NestJS compatible aprobada (`useSecurityHeaders()`); probar compatibilidad con Swagger UI |
-| Rate limiting | Global 60 solicitudes/minuto por IP; `@nestjs/throttler`, estado 429; memoria local del proceso, sin Redis |
+| Rate limiting | Sin límite global por volumen; validación y registro no producen 429 por volumen |
 | HTTPS | No obligatorio para loopback local; si se expone más allá de localhost, revisar TLS y controles contra abuso antes de desplegar |
 | Autenticación | Ninguna cuenta, rol, guard de identidad ni proveedor IdP en el MVP |
 | UUID | Solo vincula validación temporal con registro, **no** autentica personas |
@@ -203,7 +202,7 @@ No versionar `.env` con credenciales. La aplicación debe rechazar una clave aus
 
 ## 9. Guardrails e integridad de IA
 
-MiniLM es un generador de embeddings local, **no un LLM conversacional**. No se introducen filtros de prompt injection generativa, moderadores remotos, cross-encoders, múltiples modelos ni clasificadores de idioma. Se reutilizan controles existentes: longitud de frase, DTOs, throttle y timeout lógico configurable de inferencia. `EmbeddingGeneratorPort` garantiza salida con **384 valores finitos**, norma L2 dentro de tolerancia definida en implementación, `model_id` y `model_version` compatibles. Ante fallo, no consulta pgvector ni emite una validación exitosa.
+MiniLM es un generador de embeddings local, **no un LLM conversacional**. No se introducen filtros de prompt injection generativa, moderadores remotos, cross-encoders, múltiples modelos ni clasificadores de idioma. Se reutilizan controles existentes: longitud de frase, DTOs y timeout lógico configurable de inferencia. `EmbeddingGeneratorPort` garantiza salida con **384 valores finitos**, norma L2 dentro de tolerancia definida en implementación, `model_id` y `model_version` compatibles. Ante fallo, no consulta pgvector ni emite una validación exitosa.
 
 La búsqueda del Bloque 05 sigue invariable: generar embedding; buscar coincidencia textual normalizada primero; sin ella, Top-1 **exacto** por coseno filtrado por versión compatible; evaluar umbral inicial `0.8538613695045911` solo en caso vectorial. No se introducen índices ANN ni rerankers. Un timeout **lógico** no implica necesariamente interrupción física inmediata del trabajo nativo; el contrato lo expone como fallo controlado de IA y exige que no se registre una validación exitosa.
 
@@ -275,7 +274,7 @@ No crear `SecurityModule`/`InfrastructureModule` globales por obligación ni int
 
 **Sólo Jest unitario para el MVP** (B06-D15 alternativa A), sin Supertest, E2E, base de datos aislada, Testcontainers ni ejecución real de MiniLM en la suite obligatoria:
 
-- DTO/pipes: tipos erróneos, objetos con propiedades desconocidas, texto vacío tras trim, 500/501 puntos de código, controles Unicode, query inválida, `confirmed` no booleano.
+- DTO/pipes: tipos erróneos, objetos con propiedades desconocidas, texto vacío tras trim, 280/281 puntos de código en nuevas entradas; lectura histórica hasta 500, controles Unicode, query inválida, `confirmed` no booleano.
 - Mapeo de errores: dominio/aplicación/infraestructura y excepciones imprevistas; campos RFC 9457, códigos seguros, ausencia de filtración de secretos.
 - UUID: formato válido, vínculo a la fila, expiración, texto, confirmación y reutilización simulada.
 - Use cases con puertos dobles: coincidencia textual, vectorial, sin candidata; HITL requerido/no requerido, modificación de texto, vencimiento y falta de segundo embedding en creación.
@@ -320,11 +319,11 @@ La cancelación es un estado de la experiencia de usuario; **no** se persiste un
 | B06-D03 | Versionado URI `/api/v1` | Versionado visible y simple; URLs versionadas |
 | B06-D04 | OpenAPI 3.1 YAML contract-first | Requiere verificar manualmente correspondencia con código |
 | B06-D05 | class-validator y ValidationPipe | DTOs en clases; no duplicar lógica de dominio |
-| B06-D06 | Texto ≤500 puntos de código y controles básicos | Puede excluir textos largos; evita consumo excesivo |
+| B06-D06 | Nuevas entradas ≤280 puntos de código, sin Cc; lectura histórica hasta 500 | Puede excluir textos largos; evita consumo excesivo |
 | B06-D07 | RFC 9457 sin `type` explícito, `code`, `errors` opcional | Extensiones propias documentadas |
 | B06-D08 | Un GlobalExceptionFilter | Centraliza traducción; evitar filtro monolítico complejo |
 | B06-D09 | CORS restringido y cabeceras nativas NestJS | Requiere versión compatible y configuración correcta |
-| B06-D10 | 60 req/min/IP global en memoria | No pondera costo de endpoints ni escala múltiples instancias |
+| B06-D10 | Sin límite global por volumen | Cada petición sigue sus reglas funcionales |
 | B06-D11 | Sin autenticación | Apropiado para demo local, no para exposición pública sostenida |
 | B06-D12 | Guardrails técnicos de embeddings | Sin modelos extra ni moderación |
 | B06-D13 | UUID v4 de validación persistida | Sin firma; no demuestra identidad de usuario |
