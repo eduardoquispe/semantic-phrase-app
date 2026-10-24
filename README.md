@@ -96,13 +96,19 @@ contexto del proyecto, no una certificación de calidad en producción.
 
 ## Prerequisitos
 
-- Node.js y [pnpm](https://pnpm.io/).
-- Docker Desktop (el servicio `embeddings` está fijado a `linux/arm64`; en otra
-  arquitectura hay que ajustar la imagen/plataforma en `compose.yaml`).
+- [Git](https://git-scm.com/downloads) (para clonar el repo y sus submódulos).
+- [Node.js](https://nodejs.org/) 22.x y [pnpm](https://pnpm.io/) (`npm i -g pnpm`).
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (el servicio
+  `embeddings` está fijado a `linux/arm64`; en otra arquitectura hay que ajustar la
+  imagen/plataforma en `compose.yaml`).
 
 ## Instalación y ejecución
 
-1. Clonar con submódulos (frontend y backend viven en repos aparte bajo `apps/`):
+Guía paso a paso para levantar todo el entorno desde cero (útil si es la primera
+vez que lo haces).
+
+1. **Clonar con submódulos** — frontend y backend viven en repos aparte bajo
+   `apps/`, así que un `git clone` normal los deja vacíos:
 
    ```sh
    git clone --recurse-submodules <url-del-repo>
@@ -110,7 +116,10 @@ contexto del proyecto, no una certificación de calidad en producción.
    git submodule update --init --recursive
    ```
 
-2. Copiar las variables de entorno de ejemplo:
+2. **Copiar las variables de entorno de ejemplo** — cada app (raíz, backend,
+   frontend) tiene su propio `.env.example` con valores que ya funcionan en
+   local; copiarlos a `.env` evita tener que configurar nada a mano (ver detalle
+   en [Variables de entorno](#variables-de-entorno)):
 
    ```sh
    cp .env.example .env
@@ -118,7 +127,8 @@ contexto del proyecto, no una certificación de calidad en producción.
    cp apps/frontend/.env.example apps/frontend/.env
    ```
 
-3. Levantar PostgreSQL y el servicio de embeddings desde la raíz:
+3. **Levantar PostgreSQL y el servicio de embeddings** desde la raíz — el
+   backend los necesita arriba antes de arrancar:
 
    ```sh
    docker compose up -d --wait
@@ -128,7 +138,15 @@ contexto del proyecto, no una certificación de calidad en producción.
    tardar varios minutos (requiere Internet). Las siguientes veces arranca desde
    el volumen `embeddings_data`.
 
-4. Backend (en una terminal):
+   **Checkpoint** — confirma que ambos servicios están arriba antes de seguir:
+
+   ```sh
+   docker compose ps                  # postgres y embeddings: running / healthy
+   curl http://127.0.0.1:8080/health  # debe responder 200
+   ```
+
+4. **Backend** — deja esta terminal corriendo (vas a necesitar una segunda para
+   el frontend en el paso 5):
 
    ```sh
    cd apps/backend
@@ -137,10 +155,12 @@ contexto del proyecto, no una certificación de calidad en producción.
    pnpm start:dev
    ```
 
-   Queda escuchando en `http://localhost:3000`, con prefijo `/api` (rutas reales
-   `/api/v1/phrases` y `/api/v1/phrase-validations`).
+   Debe mostrar `Nest application successfully started` y quedar escuchando en
+   `http://localhost:3000`, con prefijo `/api` (rutas reales `/api/v1/phrases` y
+   `/api/v1/phrase-validations`).
 
-5. Frontend (en otra terminal):
+5. **Frontend** — abre una **segunda terminal** (la del backend debe seguir
+   corriendo) y en ella:
 
    ```sh
    cd apps/frontend
@@ -150,17 +170,51 @@ contexto del proyecto, no una certificación de calidad en producción.
 
    Queda disponible en `http://localhost:5173`.
 
-6. Verificación manual: abrir el frontend, crear una frase, escribir una frase
-   parecida y pulsar "Validar" para ver la alerta de posible duplicado, y confirmar
-   o cancelar el guardado.
+6. **Verificación manual**: abrir el frontend, crear una frase, escribir una
+   frase parecida y pulsar "Validar" para ver la alerta de posible duplicado, y
+   confirmar o cancelar el guardado. Si algo no arranca, revisa
+   [Troubleshooting](#docker-compose-detener-y-reiniciar) más abajo.
 
 ## Variables de entorno
 
-| Ámbito                | Archivo                                                    | Contenido                                                                                                                                                                                                      |
-| --------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Raíz / Docker Compose | [`.env.example`](.env.example)                             | Credenciales y puerto de PostgreSQL usados por `compose.yaml`                                                                                                                                                  |
-| Backend               | [`apps/backend/.env.example`](apps/backend/.env.example)   | `DATABASE_URL`, `PORT`, `AI_EMBEDDINGS_URL`, `AI_MODEL`, `AI_EMBEDDING_VERSION`, `AI_EMBEDDING_DIMENSIONS` (384), `AI_INFERENCE_TIMEOUT_MS`, `AI_SIMILARITY_THRESHOLD` y `PHRASE_VALIDATION_TTL_MINUTES` |
-| Frontend              | [`apps/frontend/.env.example`](apps/frontend/.env.example) | URL base de la API                                                                                                                                                                                             |
+Cada app tiene su propio `.env` (copiado del `.env.example` correspondiente en el
+paso 2); estas tablas documentan esas variables, pero el archivo real a editar
+vive en la carpeta de cada app, no en la raíz.
+
+### Raíz / Docker Compose
+
+Usadas por [`compose.yaml`](compose.yaml). Archivo real: [`.env.example`](.env.example) → `.env`.
+
+| Variable            | Valor por defecto | Descripción                                      |
+| ------------------- | ----------------- | ------------------------------------------------ |
+| `POSTGRES_USER`     | `semantic`        | Usuario del contenedor de PostgreSQL             |
+| `POSTGRES_PASSWORD` | `semantic`        | Contraseña del contenedor de PostgreSQL          |
+| `POSTGRES_DB`       | `semantic_phrase` | Nombre de la base de datos                       |
+| `POSTGRES_PORT`     | `5432`            | Puerto del host mapeado al `5432` del contenedor |
+
+### Backend
+
+Archivo real: [`apps/backend/.env.example`](apps/backend/.env.example) → `apps/backend/.env`. Detalle completo en [`apps/backend/README.md`](apps/backend/README.md#variables-de-entorno).
+
+| Variable                        | Requerida | Valor de ejemplo / por defecto                                  | Descripción                                          |
+| ------------------------------- | --------- | --------------------------------------------------------------- | ---------------------------------------------------- |
+| `DATABASE_URL`                  | Sí        | `postgresql://semantic:semantic@localhost:5432/semantic_phrase` | Conexión a PostgreSQL (también la usa `drizzle-kit`) |
+| `PORT`                          | No        | `3000`                                                          | Puerto HTTP del backend                              |
+| `AI_EMBEDDINGS_URL`             | Sí        | `http://127.0.0.1:8080`                                         | URL del servicio de embeddings (TEI)                 |
+| `AI_MODEL`                      | Sí        | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`   | Modelo de Hugging Face usado                         |
+| `AI_EMBEDDING_VERSION`          | Sí        | `tei-9674a558…764b3`                                            | Identidad del runtime/perfil del modelo              |
+| `AI_EMBEDDING_DIMENSIONS`       | Sí        | `384`                                                           | Debe ser `384` o el backend no arranca               |
+| `AI_INFERENCE_TIMEOUT_MS`       | Sí        | `5000`                                                          | Timeout de inferencia del modelo                     |
+| `AI_SIMILARITY_THRESHOLD`       | Si        | `0.8538613695045911`                                            | Umbral coseno (inclusivo) para exigir confirmación   |
+| `PHRASE_VALIDATION_TTL_MINUTES` | No        | `15`                                                            | Vigencia de una validación temporal                  |
+
+### Frontend
+
+Archivo real: [`apps/frontend/.env.example`](apps/frontend/.env.example) → `apps/frontend/.env`. Detalle completo en [`apps/frontend/README.md`](apps/frontend/README.md#variables-de-entorno).
+
+| Variable            | Valor local                 | Descripción                                                     |
+| ------------------- | --------------------------- | --------------------------------------------------------------- |
+| `VITE_API_BASE_URL` | `http://localhost:3000/api` | Base URL que usa el cliente HTTP (Axios) para llamar al backend |
 
 Si cambias las credenciales en el `.env` raíz, recuerda actualizar también
 `DATABASE_URL` en `apps/backend/.env` para que sigan coincidiendo.
