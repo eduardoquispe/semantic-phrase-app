@@ -11,7 +11,6 @@ implica expiración), texto, modelo/versión, confirmación y estado no consumid
 la frase y después marca la validación como consumida (en una única transacción).
 TTL configurable (15 minutos por defecto); respuesta y fila comparten expiración.
 
-
 **Proyecto:** Semantic Phrase App  
 **Estado:** Aprobado — B07-D01 a B07-D12, con ajustes posteriores expresamente confirmados  
 **Fecha:** 21 de octubre de 2026  
@@ -96,21 +95,20 @@ Orden de puesta en marcha previsto: instalar dependencias en cada aplicación; p
 
 Cada aplicación tiene su `.env.example` versionado y `.env` local ignorado por Git. La raíz dispone también de `.env.example` para las variables utilizadas por `compose.yaml`. En el backend **no hay esquema de validación** (ni Zod): solo se comprueban `DATABASE_URL`, `AI_EMBEDDING_DIMENSIONS` (debe ser 384), `AI_MODEL` y `AI_EMBEDDING_VERSION`; `AI_EMBEDDINGS_URL` y `AI_INFERENCE_TIMEOUT_MS` no se validan.
 
-| Ámbito | Configuración y responsabilidades |
-|---|---|
-| `apps/frontend` | Solo configuración pública, por ejemplo `VITE_API_BASE_URL`; nunca secretos ni credenciales |
-| `apps/backend` | `DATABASE_URL`, `PORT`, `AI_EMBEDDINGS_URL`, `AI_MODEL`, `AI_EMBEDDING_VERSION`, `AI_EMBEDDING_DIMENSIONS`, `AI_INFERENCE_TIMEOUT_MS`, `AI_SIMILARITY_THRESHOLD`, `PHRASE_VALIDATION_TTL_MINUTES` |
-| Docker Compose (raíz) | Variables locales en `.env` raíz para credenciales y configuración de PostgreSQL, sin versionar valores sensibles |
-
+| Ámbito                | Configuración y responsabilidades                                                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/frontend`       | Solo configuración pública, por ejemplo `VITE_API_BASE_URL`; nunca secretos ni credenciales                                                                                                       |
+| `apps/backend`        | `DATABASE_URL`, `PORT`, `AI_EMBEDDINGS_URL`, `AI_MODEL`, `AI_EMBEDDING_VERSION`, `AI_EMBEDDING_DIMENSIONS`, `AI_INFERENCE_TIMEOUT_MS`, `AI_SIMILARITY_THRESHOLD`, `PHRASE_VALIDATION_TTL_MINUTES` |
+| Docker Compose (raíz) | Variables locales en `.env` raíz para credenciales y configuración de PostgreSQL, sin versionar valores sensibles                                                                                 |
 
 No existen `CORS_ORIGINS` ni `RATE_LIMIT_*` (el origen CORS está fijo en `configureApp`). No se requiere secreto de firma.
 
 **Scripts:** cada proyecto controla sus scripts en su propio `package.json`. Los del backend son:
 
-| Aplicación | Scripts |
-|---|---|
-| Frontend | Ver `apps/frontend/package.json` (fuera del alcance de este documento) |
-| Backend | `build`, `start`, `start:dev`, `start:debug`, `start:prod`, `lint` (ejecuta ESLint con `--fix`, modifica archivos), `format` (Prettier con escritura), `test`, `test:watch`, `test:cov`, `test:debug`, `test:e2e`, `db:generate`, `db:migrate` |
+| Aplicación | Scripts                                                                                                                                                                                                                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend   | Ver `apps/frontend/package.json` (fuera del alcance de este documento)                                                                                                                                                                         |
+| Backend    | `build`, `start`, `start:dev`, `start:debug`, `start:prod`, `lint` (ejecuta ESLint con `--fix`, modifica archivos), `format` (Prettier con escritura), `test`, `test:watch`, `test:cov`, `test:debug`, `test:e2e`, `db:generate`, `db:migrate` |
 
 No existen `dev`, `format:check`, `typecheck` ni `check` en el backend. La verificación local es `pnpm run build && pnpm test && pnpm run test:e2e`. No hay scripts pnpm en la raíz; Docker Compose se invoca desde allí.
 
@@ -187,20 +185,20 @@ Sin CI/CD, despliegue cloud, Kubernetes, microservicios, colas, Redis, agentes d
 
 ## 12. Registro de decisiones aprobadas
 
-| ID | Elección final | Alcance / observación |
-|---|---|---|
-| B07-D01 | **A** | React y NestJS locales; PostgreSQL en Docker Compose |
-| B07-D02 | **A** | Servicio PostgreSQL + pgvector con volumen persistente y sin seed automático; `compose.yaml` ubicado en la raíz por ajuste posterior confirmado |
-| B07-D03 | **C, parcial** | `.env` independientes y `.env.example`; la validación tipada al inicio **no** está implementada |
+| ID      | Elección final  | Alcance / observación                                                                                                                                                                            |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B07-D01 | **A**           | React y NestJS locales; PostgreSQL en Docker Compose                                                                                                                                             |
+| B07-D02 | **A**           | Servicio PostgreSQL + pgvector con volumen persistente y sin seed automático; `compose.yaml` ubicado en la raíz por ajuste posterior confirmado                                                  |
+| B07-D03 | **C, parcial**  | `.env` independientes y `.env.example`; la validación tipada al inicio **no** está implementada                                                                                                  |
 | B07-D04 | **B, adaptada** | Inicialmente scripts independientes (A), luego se aprobó centralizar comandos para un workspace; tras descartar pnpm workspaces se mantienen scripts **por aplicación**, sin `package.json` raíz |
-| B07-D05 | **A** | Pruebas unitarias para lógica y escenarios críticos |
-| B07-D06 | **Revisada** | Hay e2e con Supertest en el backend (puertos simulados); sin integración contra PostgreSQL/TEI reales |
-| B07-D07 | **A** | Mantener la evaluación existente de IA; sin scripts nuevos |
-| B07-D08 | **A** | Logger nativo de NestJS; `ProblemDetailsFilter` y filtros por ruta |
-| B07-D09 | **B, adaptada** | Calidad estática mínima; configuración **independiente** por aplicación tras separar proyectos |
-| B07-D10 | **Revisada** | No existe `pnpm check`; cada aplicación se verifica con sus propios scripts |
-| B07-D11 | **B** | Constitution, Spec Kit y AGENTS.md independientes por aplicación |
-| B07-D12 | **B** | README principal y README de cada aplicación |
+| B07-D05 | **A**           | Pruebas unitarias para lógica y escenarios críticos                                                                                                                                              |
+| B07-D06 | **Revisada**    | Hay e2e con Supertest en el backend (puertos simulados); sin integración contra PostgreSQL/TEI reales                                                                                            |
+| B07-D07 | **A**           | Mantener la evaluación existente de IA; sin scripts nuevos                                                                                                                                       |
+| B07-D08 | **A**           | Logger nativo de NestJS; `ProblemDetailsFilter` y filtros por ruta                                                                                                                               |
+| B07-D09 | **B, adaptada** | Calidad estática mínima; configuración **independiente** por aplicación tras separar proyectos                                                                                                   |
+| B07-D10 | **Revisada**    | No existe `pnpm check`; cada aplicación se verifica con sus propios scripts                                                                                                                      |
+| B07-D11 | **B**           | Constitution, Spec Kit y AGENTS.md independientes por aplicación                                                                                                                                 |
+| B07-D12 | **B**           | README principal y README de cada aplicación                                                                                                                                                     |
 
 ### Cambio transversal a bloques anteriores
 

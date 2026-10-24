@@ -11,14 +11,14 @@ modelo de Hugging Face. Ver el enunciado original en
   funcionalidad (Screaming Architecture).
 - **Backend:** NestJS + TypeScript (`apps/backend`), arquitectura hexagonal
   (`domain` / `application` / `infrastructure`).
-- **Base de datos:** PostgreSQL + `pgvector`, migraciones con Drizzle Kit.
+- **Base de datos:** PostgreSQL + `pgvector`, migraciones con Drizzle (ORM).
 - **IA:** embeddings de Hugging Face servidos por **Text Embeddings Inference
   (TEI)** y consumidos desde el backend vía LangChain; similitud por distancia
   coseno en PostgreSQL/pgvector.
 - **Human-in-the-loop:** si una frase nueva es muy parecida a una existente, el
   backend pide confirmación antes de guardarla.
 
-### Diagrama de componentes
+### Diagrama BigPicture
 
 ```mermaid
 flowchart LR
@@ -28,32 +28,55 @@ flowchart LR
     BE <-->|embeddings HTTP| TEI["HF Text Embeddings Inference\n:8080"]
 ```
 
-Este diagrama refleja el **código actual**. Los documentos de `docs/03-architecture/`
-fueron revisados para coincidir con el código implementado; los de `docs/00-discovery/`
-y `docs/01-ai-feasibility/` son registros históricos de decisión y llevan una nota
-cuando el código difiere. Ante cualquier discrepancia, manda el código.
+### Diagrama de secuencia (caso principal)
 
-### Flujo de validación y guardado (caso principal)
+```mermaid
+sequenceDiagram
+    actor U as Usuario
+    participant FE as Frontend
+    participant BE as Backend
+    participant TEI as Embeddings (TEI)
+    participant DB as PostgreSQL + pgvector
+    U->>FE: 1. Escribe la frase y pulsa Validar
+    FE->>BE: 2. Solicita validar la frase
+    BE->>TEI: 3. Genera el embedding
+    TEI-->>BE: Vector
+    BE->>DB: 4. Busca la frase más parecida
+    DB-->>BE: Frase similar + score
+    BE->>DB: 5. Guarda la validación temporal
+    BE-->>FE: 6. Resultado + score + referencia
+    alt Usuario cancela
+        U->>FE: 7. Cancela
+        Note over FE,DB: No se guarda la frase, la validación expira
+    else Usuario confirma (o no había duplicado)
+        U->>FE: 7. Confirma
+        FE->>BE: 8. Solicita guardar con la referencia
+        BE->>DB: 8. Verifica la validación, inserta la frase y la marca como consumida
+        BE-->>FE: 9. Frase guardada
+    end
+```
 
 1. El usuario escribe una frase nueva en el frontend y pulsa **Validar**.
-2. El frontend llama a `POST /api/v1/phrase-validations` con el texto.
-3. El backend genera el embedding de la frase llamando al servicio `embeddings`
-   (TEI) a través del adaptador de LangChain.
-4. El backend busca, en PostgreSQL/pgvector, la frase guardada más parecida
-   (coincidencia textual exacta o similitud coseno Top-1) y calcula su score.
-5. El backend responde con la frase más parecida (si existe), el `similarityScore`
-   y si se requiere confirmación (`requiresConfirmation`); guarda una validación
-   temporal identificada por `validationId` (con expiración).
-6. Si hay posible duplicado, el frontend muestra la alerta con el score y la frase
-   parecida; el usuario confirma o cancela el guardado.
-7. Si el usuario confirma (o no había duplicado), el frontend llama a
-   `POST /api/v1/phrases` con el `validationId` recibido y, cuando
-   `requiresConfirmation` es `true`, con `confirmed: true` (sin él, 409
-   `CONFIRMATION_REQUIRED`).
-8. El backend comprueba la validación (existe, vigente, no consumida, mismo texto
-   y modelo), inserta la frase reutilizando el embedding ya calculado (sin volver
-   a llamar al modelo) y marca la validación como consumida, todo en una única
+2. El frontend llama al backend (`POST /api/v1/phrase-validations`) con el texto.
+3. El backend pide el embedding de la frase al servicio de embeddings (TEI), a
+   través del adaptador de LangChain.
+4. El backend busca en PostgreSQL/pgvector la frase guardada más parecida
+   (coincidencia textual exacta o similitud coseno Top-1) y obtiene su score.
+5. El backend guarda en PostgreSQL una validación temporal con el embedding y
+   expiración, identificada por `validationId`.
+6. El backend responde al frontend con la frase más parecida (si existe), el
+   `similarityScore` y si requiere confirmación (`requiresConfirmation`).
+7. Si hay posible duplicado, el frontend muestra la alerta con el score y la frase
+   parecida; el usuario cancela (no se guarda nada y la validación expira) o
+   confirma.
+8. Si el usuario confirma (o no había duplicado), el frontend llama al backend
+   (`POST /api/v1/phrases`) con el `validationId` y, cuando `requiresConfirmation`
+   es `true`, con `confirmed: true` (sin él, 409 `CONFIRMATION_REQUIRED`). El
+   backend verifica la validación (existe, vigente, no consumida, mismo texto y
+   modelo), inserta la frase reutilizando el embedding ya calculado (sin volver a
+   llamar al modelo) y marca la validación como consumida, todo en una única
    transacción.
+9. El backend responde al frontend con la frase guardada.
 
 ### Mapa de `docs/`
 

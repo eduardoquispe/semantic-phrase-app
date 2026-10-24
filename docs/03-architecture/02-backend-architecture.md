@@ -112,7 +112,7 @@ sequenceDiagram
     V-->>FE: Resultado + score + referencia
     alt Usuario cancela
         U->>FE: Cancelar
-        Note over FE,VR: No se registra Phrase; validación expirará
+        Note over FE,VR: No se registra Phrase, validación expirará
     else Usuario decide guardar
         U->>FE: Guardar / confirmar
         FE->>C: Frase + referencia + confirmación
