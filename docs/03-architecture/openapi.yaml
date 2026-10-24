@@ -11,7 +11,7 @@ servers:
     description: API local NestJS
 tags:
   - name: Phrases
-    description: Consulta y registro de frases
+    description: Consulta, registro y eliminación lógica de frases
   - name: PhraseValidations
     description: Validación previa y generación de comprobante temporal
 paths:
@@ -44,19 +44,20 @@ paths:
                         text: Me gusta viajar a Cusco
                         createdAt: '2026-10-21T19:02:00Z'
                     meta: { page: 1, limit: 20, total: 1, totalPages: 1 }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-        '500': { $ref: '#/components/responses/InternalError' }
-        '503': { $ref: '#/components/responses/DatabaseUnavailable' }
+        '400': { $ref: '#/components/responses/QueryBadRequest' }
+        '500': { $ref: '#/components/responses/ListInternalError' }
     post:
       tags: [Phrases]
       operationId: createPhrase
       summary: Registrar frase validada
       description: |
         Comprueba referencia UUID v4, original exacto, modelo/versión, vigencia y consumo; exige confirmed=true
-        solo cuando la validación almacenada requiere HITL. Inserción y consumo son
-        atómicos. No recalcula el embedding ni la similitud; permite duplicados confirmados.
-        No admite query ni impone límite global por volumen. Referencia inexistente:
+        solo cuando la validación almacenada requiere HITL. Guarda la frase y después
+        marca la validación como consumida, sin transacción ni garantía de registro único
+        concurrente. Si falla el consumo, la frase permanece guardada y se devuelve 500;
+        un reintento puede crear otra frase con la misma validación.
+        No recalcula el embedding ni la similitud; permite duplicados confirmados.
+        Los parámetros de consulta se ignoran. No aplica rate limiting. Referencia inexistente:
         400 INVALID_VALIDATION_ID. Modelo/versión incompatible: 500 INTERNAL_ERROR seguro.
       requestBody:
         required: true
@@ -88,22 +89,44 @@ paths:
                       createdAt: '2026-10-21T19:02:00Z'
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/RegistrationInternalError' }
+  /phrases/{id}:
+    delete:
+      tags: [Phrases]
+      operationId: deletePhrase
+      summary: Eliminar lógicamente una frase
+      description: |
+        Soft delete: marca la frase con la fecha de eliminación sin borrarla físicamente.
+        La frase deja de aparecer en el listado y de participar en validaciones futuras.
+        No puede restaurarse desde la API. Una frase inexistente o ya eliminada responde
+        404 PHRASE_NOT_FOUND. Las validaciones previas que la citan no se modifican.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador UUID de la frase.
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Frase eliminada lógicamente; sin contenido }
+        '400': { $ref: '#/components/responses/QueryBadRequest' }
+        '404': { $ref: '#/components/responses/PhraseNotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
-        '503': { $ref: '#/components/responses/DatabaseUnavailable' }
   /phrase-validations:
     post:
       tags: [PhraseValidations]
       operationId: validatePhrase
       summary: Validar una frase antes del registro
       description: |
-        Genera embedding mediante MiniLM local, prioriza coincidencia textual normalizada
+        Genera embedding mediante el servicio configurado, prioriza coincidencia textual normalizada
         y, si no existe, consulta Top-1 exacto por similitud coseno. Persiste la
-        validación temporal y emite un UUID con vigencia inicial de 15 minutos.
+        validación temporal y emite un UUID con vigencia configurable, por defecto 15 minutos.
         Un posible duplicado no constituye un error HTTP. La igualdad textual prima
         incluso con vectores almacenados incompatibles; siempre se genera un embedding
         nuevo válido. Colección vacía es éxito; sin igualdad textual ni vectores
         compatibles en una colección no vacía se responde 500 INTERNAL_ERROR.
-        No se admiten parámetros de consulta ni se limita el volumen de solicitudes.
+        Los parámetros de consulta se ignoran. No aplica rate limiting.
+        La candidata vectorial se devuelve incluso bajo el umbral configurable
+        (por defecto 0.8538613695045911). requiresConfirmation determina si exige confirmación.
       requestBody:
         required: true
         content:
@@ -160,21 +183,11 @@ paths:
                       expiresAt: '2026-10-21T19:15:00Z'
                       requiresConfirmation: false
                       match: null
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { $ref: '#/components/responses/ValidationBadRequest' }
         '500': { $ref: '#/components/responses/InternalError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
   schemas:
-    PhraseText:
-      type: string
-      minLength: 1
-      maxLength: 500
-      description: |
-        Longitud de 1 a 500 puntos de código Unicode; después de trim no debe quedar
-        vacío. Rechazar caracteres de control no permitidos. El contrato OpenAPI
-        maxLength expresa longitud de cadena; la implementación debe comprobar
-        explícitamente los puntos de código Unicode y el texto después de trim.
-      examples: [Me gusta viajar a Cusco]
     ValidationPhraseText:
       type: string
       minLength: 1
@@ -242,6 +255,7 @@ components:
         validationId:
           type: string
           format: uuid
+          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
           description: UUID v4 de la validación persistida. Obligatorio; ausente, no-v4 o inexistente produce INVALID_VALIDATION_ID. No autentica personas.
         confirmed:
           type: boolean
@@ -260,7 +274,9 @@ components:
       properties:
         validationId: { type: string, format: uuid, description: UUID v4 de la validación persistida. }
         expiresAt: { type: string, format: date-time }
-        requiresConfirmation: { type: boolean }
+        requiresConfirmation:
+          type: boolean
+          description: true para igualdad textual o coseno mayor o igual al umbral configurado; false si no hay candidata o está bajo el umbral.
         match:
           oneOf:
             - $ref: '#/components/schemas/PhraseMatch'
@@ -299,7 +315,8 @@ components:
       type: object
       description: |
         Subconjunto RFC 9457. Se omite type (equivale a about:blank).
-        code es extensión de la API; errors opcional para validación por campo.
+        code es el identificador estable del error; title, detail y messages son textos
+        humanos que pueden variar. errors es opcional para validación por campo.
       additionalProperties: false
       required: [title, status, detail, code]
       properties:
@@ -315,64 +332,137 @@ components:
             - VALIDATION_EXPIRED
             - VALIDATION_ALREADY_USED
             - CONFIRMATION_REQUIRED
-            - RATE_LIMIT_EXCEEDED
+            - PHRASE_NOT_FOUND
             - INTERNAL_ERROR
             - AI_UNAVAILABLE
-            - DATABASE_UNAVAILABLE
+            - DATABASE_ERROR
+            - INVALID_PHRASE
+            - INVALID_PHRASE_TEXT
+            - INVALID_EMBEDDING
         errors:
           type: array
           items: { $ref: '#/components/schemas/FieldError' }
+    BadRequestProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 400 }
+            code: { enum: [VALIDATION_ERROR, INVALID_VALIDATION_ID, PHRASE_MISMATCH] }
+    ConflictProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 409 }
+            code: { enum: [VALIDATION_EXPIRED, VALIDATION_ALREADY_USED, CONFIRMATION_REQUIRED] }
+    NotFoundProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 404 }
+            code: { const: PHRASE_NOT_FOUND }
+    InternalProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 500 }
+            code: { enum: [INTERNAL_ERROR, DATABASE_ERROR] }
+    UnavailableProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 503 }
+            code: { const: AI_UNAVAILABLE }
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/BadRequestProblem'
+        - properties:
+            code: { const: VALIDATION_ERROR }
+    ListInternalProblem:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - properties:
+            status: { const: 500 }
+            code: { enum: [INTERNAL_ERROR, DATABASE_ERROR, INVALID_PHRASE, INVALID_PHRASE_TEXT, INVALID_EMBEDDING] }
+    RegistrationInternalProblem:
+      allOf:
+        - $ref: '#/components/schemas/ListInternalProblem'
+        - properties:
+            code: { enum: [INTERNAL_ERROR, DATABASE_ERROR, INVALID_PHRASE, INVALID_EMBEDDING] }
   responses:
     BadRequest:
-      description: DTO o parámetros inválidos, referencia inválida o texto no correspondiente a la validación
+      description: Cuerpo inválido, referencia inválida o texto no correspondiente a la validación
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/BadRequestProblem' }
           example:
             title: Bad Request
             status: 400
-            detail: Los datos enviados no son válidos
+            detail: Los datos enviados no son válidos.
             code: VALIDATION_ERROR
-            errors: [{ field: text, messages: [Texto inválido] }]
+            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, sin controles ni texto vacío.'] }]
     Conflict:
       description: Validación expirada, consumida o que exige confirmación
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/ConflictProblem' }
           example:
             title: Conflict
             status: 409
             detail: La validación expiró. Valida nuevamente la frase.
             code: VALIDATION_EXPIRED
-    TooManyRequests:
-      description: Se excedió el límite global de 60 solicitudes por minuto por IP
+    PhraseNotFound:
+      description: Frase inexistente o ya eliminada
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
-          example:
-            title: Too Many Requests
-            status: 429
-            detail: Has realizado demasiadas solicitudes. Inténtalo nuevamente más tarde.
-            code: RATE_LIMIT_EXCEEDED
+          schema: { $ref: '#/components/schemas/NotFoundProblem' }
+          example: { title: Not Found, status: 404, detail: La frase no existe., code: PHRASE_NOT_FOUND }
     InternalError:
-      description: Fallo interno inesperado sin filtración de información sensible
+      description: Fallo de base de datos, fallo interno o datos persistidos inválidos
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
-          example: { title: Internal Server Error, status: 500, detail: Se produjo un error inesperado., code: INTERNAL_ERROR }
-    ServiceUnavailable:
-      description: IA o base de datos no disponible
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/InternalProblem' }
           examples:
-            ai:
-              value: { title: Service Unavailable, status: 503, detail: El servicio de IA no está disponible., code: AI_UNAVAILABLE }
+            internal:
+              value: { title: Internal Server Error, status: 500, detail: Ocurrió un error interno., code: INTERNAL_ERROR }
             database:
-              value: { title: Service Unavailable, status: 503, detail: La base de datos no está disponible., code: DATABASE_UNAVAILABLE }
-    DatabaseUnavailable:
-      description: Persistencia no disponible
+              value: { title: Internal Server Error, status: 500, detail: Ocurrió un error de base de datos., code: DATABASE_ERROR }
+    ServiceUnavailable:
+      description: Servicio de embeddings no disponible o respuesta de inferencia inválida
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
-          example: { title: Service Unavailable, status: 503, detail: La persistencia no está disponible., code: DATABASE_UNAVAILABLE }
+          schema: { $ref: '#/components/schemas/UnavailableProblem' }
+          example: { title: Service Unavailable, status: 503, detail: El servicio de IA no está disponible., code: AI_UNAVAILABLE }
+    QueryBadRequest:
+      description: Paginación inválida o parámetros de consulta desconocidos
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+          example:
+            title: Bad Request
+            status: 400
+            detail: Los parámetros de la solicitud no son válidos.
+            code: VALIDATION_ERROR
+            errors: [{ field: page, messages: ['page must not be less than 1'] }]
+    ValidationBadRequest:
+      description: Texto inválido o propiedades desconocidas del cuerpo
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+          example:
+            title: Bad Request
+            status: 400
+            detail: Los parámetros de la solicitud no son válidos.
+            code: VALIDATION_ERROR
+            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, sin controles ni texto vacío.'] }]
+    ListInternalError:
+      description: Fallo de base de datos, fallo interno o datos persistidos inválidos
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ListInternalProblem' }
+          example: { title: Internal Server Error, status: 500, detail: Ocurrió un error de base de datos., code: DATABASE_ERROR }
+    RegistrationInternalError:
+      description: Fallo de base de datos, fallo interno, datos persistidos inválidos o modelo/versión incompatible
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/RegistrationInternalProblem' }
+          example: { title: Internal Server Error, status: 500, detail: Ocurrió un error de base de datos., code: DATABASE_ERROR }
