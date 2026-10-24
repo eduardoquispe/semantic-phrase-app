@@ -53,7 +53,7 @@ En pantallas pequeñas, las dos tarjetas principales y los ejemplos se apilan; d
 | Resultado de coincidencia | Tarjeta ámbar con tipo, frase existente y puntaje. Presenta solo la candidata de mayor similitud. Una coincidencia textual indica 100 % y aclara que no intervino el modelo. |
 | **Guardar de todos modos** y **Cancelar** | Sustituyen el guardado ordinario en una advertencia. Cancelar no persiste el intento, conserva el texto y exige volver a validar para otro intento de guardado. |
 | Lista compartida | Filas con frase, fecha y hora de creación, y acción Eliminar identificable por frase. Orden de más reciente a más antigua; se actualiza tras guardar o eliminar. |
-| Confirmación de eliminación | Antes de eliminar, identifica la frase y advierte que no podrá recuperarse desde la aplicación. Ofrece **Cancelar** y **Eliminar frase**. La galería muestra su contenido visual; la implementación deberá presentarlo como diálogo accesible. |
+| Confirmación de eliminación | Antes de eliminar, identifica la frase y advierte que no podrá recuperarse desde la aplicación (eliminación lógica: el dato se conserva en el sistema pero no vuelve a mostrarse). Ofrece **Cancelar** y **Eliminar frase**. La galería muestra su contenido visual; la implementación deberá presentarlo como diálogo accesible. |
 
 ## 5. Estados visibles y mensajes
 
