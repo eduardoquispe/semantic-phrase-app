@@ -10,7 +10,7 @@
 
 El frontend permite listar frases registradas, ingresar una frase, solicitar su validación semántica y, si existe una coincidencia potencial, mostrar el resultado y solicitar la decisión humana antes de guardar. Consumirá una API REST síncrona expuesta por NestJS. La similitud detectada es un **resultado funcional**, no un error HTTP.
 
-La aplicación reside en `apps/web/` de un monorepo administrado mediante **pnpm workspaces, sin Turborepo**. Se construye con React y TypeScript, se organiza mediante **Screaming Architecture por funcionalidades** y utiliza **un único feature inicial: `phrases`**. No replica la arquitectura hexagonal ni los agregados del backend.
+La aplicación reside en `apps/frontend/` de un monorepo administrado mediante **pnpm workspaces, sin Turborepo**. Se construye con React y TypeScript, se organiza mediante **Screaming Architecture por funcionalidades** y utiliza **un único feature inicial: `phrases`**. No replica la arquitectura hexagonal ni los agregados del backend.
 
 El backend conserva la autoridad sobre validación semántica, reglas de negocio, vigencia y consumo del token de validación, y persistencia. El frontend conserva la responsabilidad de la experiencia de usuario y del flujo de confirmación. Los endpoints y campos exactos se ajustarán al contrato OpenAPI aprobado cuando esté disponible.
 
@@ -40,7 +40,7 @@ Las páginas pertenecen al feature: `features/phrases/pages/phrases/`. `app/` al
 | `components/` | Renderizado, interacción y accesibilidad | Acceder a Axios o DTOs de NestJS |
 | `hooks/` | Estado React y del flujo, composición de React Hook Form/TanStack Query, handlers | Implementar transporte HTTP o lógica de persistencia |
 | `services/` (opcionales) | Coordinar lógica de aplicación independiente de React si aporta valor | Ser delegadores triviales hacia API; importar React |
-| `models/` | Tipos/modelos internos del feature | Depender de contratos HTTP externos |
+| `interfaces/` | Tipos/modelos internos del feature | Depender de contratos HTTP externos |
 | `schemas/` | Validación local de formularios con Zod | Sustituir validación de negocio del backend |
 | `api/` | Funciones HTTP de frases y ACL mediante DTOs y mappers | Gestionar estado visual, modales o navegación |
 | `shared/api/` | Configuración y normalización técnica del cliente Axios | Interpretar reglas específicas de frases |
@@ -59,7 +59,7 @@ Todos los **archivos** y directorios de unidades se denominan en **kebab-case**.
 | Hook | `.hook.ts` (o `.tsx` si contiene JSX) | `use-phrases.hook.ts` |
 | Service | `.service.ts` | `phrase-submission.service.ts` |
 | Tipos propios | `.types.ts` | `phrase-form.types.ts` |
-| Modelo interno | `.model.ts` | `phrase.model.ts` |
+| Tipos/modelo interno | `.interfaces.ts` (o `.enum.ts` para enumeraciones) | `phrase.interfaces.ts` |
 | DTO | `.dto.ts` | `phrase-response.dto.ts` |
 | Mapper | `.mapper.ts` | `phrase.mapper.ts` |
 | Schema | `.schema.ts` | `phrase.schema.ts` |
@@ -73,7 +73,7 @@ Todos los **archivos** y directorios de unidades se denominan en **kebab-case**.
 **Estructura de referencia (no lista obligatoria de archivos):**
 
 ```text
-apps/web/
+apps/frontend/
 ├── src/
 │   ├── app/
 │   │   ├── app.component.tsx
@@ -123,9 +123,10 @@ apps/web/
 │   │       │       ├── phrase-submission.service.ts
 │   │       │       ├── phrase-submission.types.ts     # si aplica
 │   │       │       └── phrase-submission.spec.ts
-│   │       ├── models/
-│   │       │   ├── phrase.model.ts
-│   │       │   └── phrase-validation.model.ts
+│   │       ├── interfaces/
+│   │       │   ├── phrase.interfaces.ts
+│   │       │   ├── phrase-validation.interfaces.ts
+│   │       │   └── phrase-match-type.enum.ts
 │   │       ├── schemas/
 │   │       │   └── phrase.schema.ts                   # compartido por el feature
 │   │       ├── utils/                                 # solo utilidades de varios consumidores
