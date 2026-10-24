@@ -24,7 +24,7 @@ El entregable contiene dos aplicaciones **independientes**, alojadas bajo `apps/
 Se conservan las decisiones funcionales y arquitectónicas de los bloques anteriores:
 
 - **B01:** React, NestJS, REST síncrono, backend hexagonal, frontend Screaming Architecture y confirmación humana ante posibles duplicados. **Se sustituye exclusivamente B01-D02**: la organización aprobada originalmente como monorepo con pnpm workspaces pasa a dos proyectos independientes bajo `apps/`.
-- **B02:** `PhrasesModule`, DDD ligero, agregados `Phrase` y `PhraseValidation`, puertos, casos de uso `ValidatePhraseUseCase`, `CreatePhraseUseCase`, `ListPhrasesUseCase` y `DeletePhraseUseCase`; Jest en backend.
+- **B02:** `PhrasesModule`, DDD, agregados `Phrase` y `PhraseValidation`, puertos, casos de uso `ValidatePhraseUseCase`, `CreatePhraseUseCase`, `ListPhrasesUseCase` y `DeletePhraseUseCase`; Jest en backend.
 - **B03:** organización de React por funcionalidades; Vitest, React Testing Library y MSW; tests colocalizados; TanStack Query, Axios, React Hook Form/Zod y demás decisiones frontend ya aprobadas.
 - **B04 (revisado):** MiniLM `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` servido por un contenedor Text Embeddings Inference (TEI 1.9.4, float32, mean pooling) y consumido mediante LangChain `OpenAIEmbeddings`; 384 dimensiones; umbral configurable `0.8538613695045911` (calibrado con vectores Xenova q8), sin garantía de exactitud perfecta ni modelo adicional.
 - **B05:** PostgreSQL + pgvector, Drizzle ORM y migraciones Drizzle Kit; comparación textual y Top-1 vectorial exacto, validaciones temporales; el registro inserta la frase y marca el consumo en una única transacción.
@@ -162,7 +162,7 @@ Se **conserva la evaluación experimental existente** de MiniLM como evidencia t
 Cada aplicación cuenta con su propia `.specify/` (incluida su Constitution) y `AGENTS.md`, de forma que pueda desarrollarse por separado:
 
 - **Frontend:** reglas de React y Screaming Architecture; hooks, componentes, accesos HTTP, contratos tipados y tests colocalizados.
-- **Backend:** reglas de NestJS, arquitectura hexagonal, DDD ligero, puertos, casos de uso, TEI/LangChain, Drizzle y Jest.
+- **Backend:** reglas de NestJS, arquitectura hexagonal, DDD, puertos, casos de uso, TEI/LangChain, Drizzle y Jest.
 - **Documentación común:** los documentos B01–B07 y `openapi.yaml` son fuente de decisiones y contrato compartido, sin duplicar su contenido íntegro en las instrucciones de agentes.
 
 Flujo recomendado: **decisión humana → especificación Spec Kit → plan → tareas → implementación con Codex → verificación local (`build`, `test`, `test:e2e`) → revisión humana**. Los agentes no deben modificar contratos ni decisiones aprobadas de forma silenciosa. `AGENTS.md` contiene instrucciones operativas para Codex; la Constitution gobierna el flujo de Spec Kit cuando se usa, sin asumir que cualquier invocación informal del agente lee automáticamente toda la documentación.
@@ -182,6 +182,14 @@ El README principal articula el orden completo de puesta en marcha. Los README i
 ## 11. Exclusiones explícitas
 
 Sin CI/CD, despliegue cloud, Kubernetes, microservicios, colas, Redis, agentes de observabilidad, orquestación de workspaces, empaquetado Docker del frontend/backend, proveedores de identidad, Testcontainers, métricas de cobertura obligatorias ni scripts nuevos de evaluación de IA.
+
+## Alternativas evaluadas: tooling transversal
+
+| Decisión                                  | Alternativas consideradas | Justificación                                                                                                                                                                   |
+| ----------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pnpm como gestor de paquetes (ambas apps) | npm, yarn                 | Instalación más rápida y `node_modules` estricto, sin dependencias fantasma; es el gestor con el que ya se armó el proyecto desde los workspaces iniciales (ver B07-D04 abajo). |
+
+**Nota de alcance (sin justificación documentada):** el backend usa Prettier (`pnpm run format`) y el frontend no; no hay un motivo registrado para esa asimetría entre ambas apps, se deja como limitación conocida en vez de inventarle una justificación.
 
 ## 12. Registro de decisiones aprobadas
 

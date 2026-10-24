@@ -12,7 +12,6 @@ confirmación, inserta la frase y después marca la validación como consumida (
 escrituras en una única transacción).
 TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
 
-
 **Estado:** Aprobado (B02-D01 a B02-D18); revisado contra el código  
 **Fecha:** 21 de octubre de 2026  
 **Ubicación:** `docs/03-architecture/02-backend-architecture.md`  
@@ -30,7 +29,7 @@ El usuario crea, lista y elimina (borrado lógico) frases y ejecuta una validaci
 
 - **Módulos por capacidad:** un único módulo de negocio, `PhrasesModule`, sin separar módulos técnicos para embeddings o seguridad. `AppModule` compone además `ConfigurationModule` (global) y `DatabaseModule` (de `shared/`, importado por `PhrasesModule`).
 - **Hexagonal por módulo:** `domain/`, `application/` e `infrastructure/`. Los puertos se separan en `application/ports/inbound` y `outbound`; la infraestructura se organiza por tecnología (`http/`, `persistence/drizzle/`, `embeddings/`). No existe `InfrastructureModule` independiente.
-- **DDD ligero:** entidades con invariantes y dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`. Los objetos de valor existentes son `PhraseId` (UUID v4), `PhraseText`, `NormalizedPhraseText`, `PhraseCreatedAt`, `PhraseModel`, `Embedding`, `SimilarityScore` y `PhraseValidationMatch`. No hay clase base `AggregateRoot` ni `PhraseFactory`.
+- **DDD:** entidades con invariantes y dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`. Los objetos de valor existentes son `PhraseId` (UUID v4), `PhraseText`, `NormalizedPhraseText`, `PhraseCreatedAt`, `PhraseModel`, `Embedding` y `SimilarityScore`. No hay clase base `AggregateRoot` ni `PhraseFactory`.
 - **Dirección de dependencias:** dominio no importa NestJS ni tecnologías; aplicación depende de dominio y puertos propios; adaptadores implementan esos puertos. `PhrasesModule` es la raíz de composición con DI.
 - **Puertos abstractos:** inbound y outbound se expresan mediante clases abstractas de TypeScript, que también funcionan como referencias de inyección NestJS. Los casos de uso implementan los inbound; los adaptadores concretan los outbound.
 - **`shared/` mínimo:** solo preocupaciones transversales: `ConfigurationPort` con su módulo global `ConfigurationModule`, `DatabaseModule`/`DatabaseProvider`, `PaginatedResult` y el manejo Problem Details. No hay `SharedModule`.
@@ -53,30 +52,30 @@ flowchart TB
 
 - **`Phrase` (Aggregate Root):** frase registrada y sus invariantes; independiente del modelo de almacenamiento. Se elimina lógicamente (`status`, `deleted_at`).
 - **`PhraseValidation` (Aggregate Root):** validación temporal con identidad propia, expiración y estado de consumo. Puede expirar sin que exista una frase registrada.
-- **Value Objects:** `PhraseText` (1–280 puntos de código para entradas nuevas, hasta 500 al leer datos históricos, sin caracteres de control), `Embedding` (384 componentes finitos), `SimilarityScore`, `PhraseValidationMatch` (decide `requiresConfirmation` con umbral inclusivo `>=`), entre otros.
+- **Value Objects:** `PhraseText` (hasta 280 puntos de código, al menos 3 letras, sin emojis ni caracteres de control; misma regla al crear y al leer de BD), `Embedding` (384 componentes finitos), `SimilarityScore`, entre otros. `PhraseValidation` decide `requiresConfirmation` (umbral inclusivo `>=`) al crearse.
 - **Domain Errors:** expresan violaciones de reglas de negocio, sin códigos HTTP.
 
 No se crea un agregado compuesto `Phrase + PhraseValidation`. Un caso de uso puede coordinar ambos sin fusionarlos.
 
 ### Aplicación
 
-| Caso de uso | Puerto inbound | Responsabilidad |
-|---|---|---|
-| `ValidatePhraseUseCase` | `ValidatePhrasePort` | Obtener embedding, solicitar la coincidencia (`findValidationMatch`), evaluar el umbral configurable en `PhraseValidationMatch`, almacenar la validación temporal y devolver el UUID persistido. |
-| `CreatePhraseUseCase` | `CreatePhrasePort` | Comprobar, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida, vigencia, texto exacto, modelo/versión (`INCOMPATIBLE_MODEL`) y confirmación; insertar la frase con el embedding previo y marcar la validación como consumida (en una única transacción vía `PhraseRegistrationPort`). No vuelve a ejecutar inferencia. |
-| `ListPhrasesUseCase` | `ListPhrasesPort` | Consultar frases registradas a través del repositorio. |
-| `DeletePhraseUseCase` | `DeletePhrasePort` | Eliminar lógicamente una frase activa (soft delete) a través del repositorio. |
+| Caso de uso             | Puerto inbound       | Responsabilidad                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ValidatePhraseUseCase` | `ValidatePhrasePort` | Obtener embedding, solicitar la coincidencia (`findValidationMatch`), evaluar el umbral configurable en `PhraseValidation`, almacenar la validación temporal y devolver el UUID persistido.                                                                                                                                           |
+| `CreatePhraseUseCase`   | `CreatePhrasePort`   | Comprobar, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida, vigencia, texto exacto, modelo/versión (`INCOMPATIBLE_MODEL`) y confirmación; insertar la frase con el embedding previo y marcar la validación como consumida (en una única transacción vía `PhraseRegistrationPort`). No vuelve a ejecutar inferencia. |
+| `ListPhrasesUseCase`    | `ListPhrasesPort`    | Consultar frases registradas a través del repositorio.                                                                                                                                                                                                                                                                                |
+| `DeletePhraseUseCase`   | `DeletePhrasePort`   | Eliminar lógicamente una frase activa (soft delete) a través del repositorio.                                                                                                                                                                                                                                                         |
 
 La salida de validación informa si hay posible duplicado, coincidencia más cercana y puntaje. DTOs, reglas de texto y contrato REST están en `06-api-security.md` y `openapi.yaml`.
 
 ### Puertos outbound
 
-| Puerto | Finalidad |
-|---|---|
-| `EmbeddingGeneratorPort` | Generación de embeddings sin exponer LangChain ni el modelo al caso de uso. |
-| `PhraseRepositoryPort` | `save`, `findValidationMatch` (coincidencia textual exacta y luego Top-1 coseno, filtrado por modelo/versión y frases activas), `list` y `softDelete`. |
-| `PhraseValidationRepositoryPort` | `save`, `update` (p. ej. `consumedAt`) y `findById` de validaciones temporales. |
-| `ConfigurationPort` (`shared/`) | Lectura de configuración sin acoplar los casos de uso a `ConfigService`. |
+| Puerto                           | Finalidad                                                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EmbeddingGeneratorPort`         | Generación de embeddings sin exponer LangChain ni el modelo al caso de uso.                                                                            |
+| `PhraseRepositoryPort`           | `save`, `findValidationMatch` (coincidencia textual exacta y luego Top-1 coseno, filtrado por modelo/versión y frases activas), `list` y `softDelete`. |
+| `PhraseValidationRepositoryPort` | `save`, `update` (p. ej. `consumedAt`) y `findById` de validaciones temporales.                                                                        |
+| `ConfigurationPort` (`shared/`)  | Lectura de configuración sin acoplar los casos de uso a `ConfigService`.                                                                               |
 
 No existe un puerto de registro atómico: guardar la frase y consumir la validación son dos llamadas independientes (ver sección 4).
 
@@ -129,19 +128,19 @@ sequenceDiagram
 
 ## 5. Validaciones, errores y respuestas
 
-| Lugar | Responsabilidad |
-|---|---|
-| Adaptador HTTP | DTOs y `ValidationPipe` para sintaxis, tipos y restricciones de entrada. |
-| Domain | `DomainError` (y subclases como `InvalidPhraseTextError`, `InvalidEmbeddingError`) para invariantes. |
-| Application | Errores de flujo como `PhraseRegistrationError` (con `reason`), `PhraseNotFoundError` e `IncompatiblePhraseCollectionError`; son clases `Error` simples, sin clase base `ApplicationError`. |
-| Adaptadores externos | `AiUnavailableError` (inferencia) y `DatabaseError` (persistencia); no filtran secretos ni excepciones crudas. |
+| Lugar                | Responsabilidad                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Adaptador HTTP       | DTOs y `ValidationPipe` para sintaxis, tipos y restricciones de entrada.                                                                                                                                                             |
+| Domain               | `DomainError` (y subclases como `InvalidPhraseTextError`, `InvalidEmbeddingError`) para invariantes.                                                                                                                                 |
+| Application          | Errores de flujo como `PhraseRegistrationError` (con `reason`), `PhraseNotFoundError` e `IncompatiblePhraseCollectionError`; son clases `Error` simples, sin clase base `ApplicationError`.                                          |
+| Adaptadores externos | `AiUnavailableError` (inferencia) y `DatabaseError` (persistencia); no filtran secretos ni excepciones crudas.                                                                                                                       |
 | Infraestructura HTTP | `ProblemDetailsFilter` global (`application/problem+json`: `title`, `status`, `detail`, `code`, `errors?`) más filtros por ruta en `infrastructure/http/filters/` que traducen errores concretos. No existe `GlobalExceptionFilter`. |
 
 La posible similitud se representa como **resultado funcional**, no como error de infraestructura. El catálogo de códigos y estados está en `06-api-security.md` y `openapi.yaml`.
 
 ## 6. Estrategia de pruebas
 
-**Framework: Jest** (con `ts-jest` y `supertest` para HTTP).
+**Framework: Jest** (con `ts-jest` y `supertest` para HTTP). Ver alternativa evaluada (Vitest) en [Alternativas evaluadas: testing](#alternativas-evaluadas-testing) al final de este documento.
 
 - **Domain/unit:** entidades, value objects e invariantes sin inicializar NestJS.
 - **Application/unit:** cada caso de uso con dobles de puertos outbound.
@@ -188,25 +187,31 @@ El directorio `huggin-face/` conserva la errata del código. `PhrasesModule` reg
 
 ## 8. Registro completo de decisiones
 
-| ID | Decisión aprobada |
-|---|---|
-| B02-D01 | Organizar NestJS por capacidades de negocio; iniciar con `PhrasesModule`. |
-| B02-D02 | Estructura `domain/application/infrastructure`; puertos inbound/outbound en `application/ports/`; sin módulo de infraestructura propio. |
-| B02-D03 | Casos de uso individuales; puertos inbound y outbound explícitos. |
-| B02-D04 | Puertos mediante clases abstractas, también utilizadas como referencias DI. |
-| B02-D05 | `EmbeddingGeneratorPort` genérico y adaptadores intercambiables; MVP Hugging Face vía LangChain. |
+| ID      | Decisión aprobada                                                                                                                                                                        |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B02-D01 | Organizar NestJS por capacidades de negocio; iniciar con `PhrasesModule`.                                                                                                                |
+| B02-D02 | Estructura `domain/application/infrastructure`; puertos inbound/outbound en `application/ports/`; sin módulo de infraestructura propio.                                                  |
+| B02-D03 | Casos de uso individuales; puertos inbound y outbound explícitos.                                                                                                                        |
+| B02-D04 | Puertos mediante clases abstractas, también utilizadas como referencias DI.                                                                                                              |
+| B02-D05 | `EmbeddingGeneratorPort` genérico y adaptadores intercambiables; MVP Hugging Face vía LangChain.                                                                                         |
 | B02-D06 | `DomainError`, errores de aplicación simples, fallos técnicos controlados (`AiUnavailableError`, `DatabaseError`), DTO/ValidationPipe, `ProblemDetailsFilter` global y filtros por ruta. |
-| B02-D07 | Testing por capas hexagonales; unitarios junto al código y E2E HTTP bajo `test/`. |
-| B02-D08 | Cuatro casos de uso: validar, crear, listar y eliminar (lógico); confirmación gestionada por `CreatePhraseUseCase`. |
-| B02-D09 | Referencia UUID de validación; no recalcular similitud al crear. |
-| B02-D10 | `shared/` pequeño para componentes transversales, sin módulo global innecesario. |
-| B02-D11 | Embedding y resultado de validación temporal en PostgreSQL, identificados por referencia; expiración lógica y limpieza física posterior. |
-| B02-D13 | Dos puertos de repositorio especializados: frases y validaciones temporales. |
-| B02-D14 | DDD ligero: entidades con comportamiento y VOs mínimos cuando tengan invariantes. |
-| B02-D15 | **Vigente:** `PhraseRegistrationPort` con adaptador Drizzle transaccional (UPDATE condicional de consumo + INSERT de la frase). |
-| B02-D16 | DTOs HTTP, comandos de aplicación y mappers HTTP/persistencia solo cuando hagan falta. |
-| B02-D17 | Jest para unitarias y E2E (con supertest); sin pruebas de integración contra servicios reales. |
-| B02-D18 | Estructura final aprobada; `Phrase` y `PhraseValidation` como Aggregate Roots independientes, sin base `AggregateRoot` obligatoria. |
+| B02-D07 | Testing por capas hexagonales; unitarios junto al código y E2E HTTP bajo `test/`.                                                                                                        |
+| B02-D08 | Cuatro casos de uso: validar, crear, listar y eliminar (lógico); confirmación gestionada por `CreatePhraseUseCase`.                                                                      |
+| B02-D09 | Referencia UUID de validación; no recalcular similitud al crear.                                                                                                                         |
+| B02-D10 | `shared/` pequeño para componentes transversales, sin módulo global innecesario.                                                                                                         |
+| B02-D11 | Embedding y resultado de validación temporal en PostgreSQL, identificados por referencia; expiración lógica y limpieza física posterior.                                                 |
+| B02-D13 | Dos puertos de repositorio especializados: frases y validaciones temporales.                                                                                                             |
+| B02-D14 | DDD: entidades con comportamiento y VOs mínimos cuando tengan invariantes.                                                                                                               |
+| B02-D15 | **Vigente:** `PhraseRegistrationPort` con adaptador Drizzle transaccional (UPDATE condicional de consumo + INSERT de la frase).                                                          |
+| B02-D16 | DTOs HTTP, comandos de aplicación y mappers HTTP/persistencia solo cuando hagan falta.                                                                                                   |
+| B02-D17 | Jest para unitarias y E2E (con supertest); sin pruebas de integración contra servicios reales.                                                                                           |
+| B02-D18 | Estructura final aprobada; `Phrase` y `PhraseValidation` como Aggregate Roots independientes, sin base `AggregateRoot` obligatoria.                                                      |
+
+## Alternativas evaluadas: testing
+
+| Decisión                        | Alternativas consideradas | Justificación                                                                                                                                                                                                                                         |
+| ------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jest (+ `ts-jest`, `supertest`) | Vitest                    | Jest es el runner soportado de forma nativa por `@nestjs/testing` y el resto del ecosistema NestJS. Vitest se eligió en cambio para el frontend (`03-frontend-architecture.md`) porque ahí ya corre sobre Vite, el mismo motor que usa el dev server. |
 
 ## 9. Aspectos resueltos en otros bloques y límites conocidos
 

@@ -10,7 +10,7 @@ modelo de Hugging Face. Ver el enunciado original en
 - **Frontend:** React + Vite + TypeScript (`apps/frontend`), organizado por
   funcionalidad (Screaming Architecture).
 - **Backend:** NestJS + TypeScript (`apps/backend`), arquitectura hexagonal
-  (`domain` / `application` / `infrastructure`).
+  (`domain` / `application` / `infrastructure`) con DDD.
 - **Base de datos:** PostgreSQL + `pgvector`, migraciones con Drizzle (ORM).
 - **IA:** embeddings de Hugging Face servidos por **Text Embeddings Inference
   (TEI)** y consumidos desde el backend vía LangChain; similitud por distancia
@@ -18,7 +18,7 @@ modelo de Hugging Face. Ver el enunciado original en
 - **Human-in-the-loop:** si una frase nueva es muy parecida a una existente, el
   backend pide confirmación antes de guardarla.
 
-### Diagrama BigPicture
+### Diagrama de arquitectura
 
 ```mermaid
 flowchart LR
@@ -84,8 +84,7 @@ sequenceDiagram
 | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | [`docs/00-discovery/reto-tecnico.md`](docs/00-discovery/reto-tecnico.md)                                 | Enunciado original del reto técnico                                                                     |
 | [`docs/00-discovery/product-brief.md`](docs/00-discovery/product-brief.md)                               | Brief de producto: alcance, actores y criterios de éxito trazados al reto                               |
-| [`docs/01-ai-feasibility/experiment-plan.md`](docs/01-ai-feasibility/experiment-plan.md)                 | Plan de experimentación para evaluar modelos de Hugging Face candidatos                                 |
-| [`docs/01-ai-feasibility/model-decision.md`](docs/01-ai-feasibility/model-decision.md)                   | Comparación de modelos (MiniLM, E5-small, DistilUSE, BGE-M3) y justificación del modelo/umbral elegidos |
+| [`docs/01-ai-feasibility/model-decision.md`](docs/01-ai-feasibility/model-decision.md)                   | Evaluación y comparación de modelos (MiniLM, E5-small, DistilUSE, BGE-M3), métricas por fase y justificación del modelo/umbral elegidos |
 | [`docs/02-ui/ui-spec.md`](docs/02-ui/ui-spec.md)                                                         | Especificación de UI/UX: estados, componentes, accesibilidad                                            |
 | [`docs/03-architecture/01-system-overview.md`](docs/03-architecture/01-system-overview.md)               | Visión general de la arquitectura aprobada (histórica; ver diagrama arriba para el estado actual)       |
 | [`docs/03-architecture/02-backend-architecture.md`](docs/03-architecture/02-backend-architecture.md)     | Arquitectura hexagonal del backend NestJS, casos de uso y puertos                                       |

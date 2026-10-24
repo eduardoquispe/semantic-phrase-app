@@ -10,15 +10,15 @@
 
 El frontend permite listar frases registradas, ingresar una frase, solicitar su validación semántica y, si existe una coincidencia potencial, mostrar el resultado y solicitar la decisión humana antes de guardar. Consumirá una API REST síncrona expuesta por NestJS. La similitud detectada es un **resultado funcional**, no un error HTTP.
 
-La aplicación reside en `apps/frontend/` de un monorepo administrado mediante **pnpm workspaces, sin Turborepo**. Se construye con React y TypeScript, se organiza mediante **Screaming Architecture por funcionalidades** y utiliza **un único feature inicial: `phrases`**. No replica la arquitectura hexagonal ni los agregados del backend.
+La aplicación reside en `apps/frontend/` de un monorepo administrado mediante **pnpm workspaces, sin Turborepo**. Se construye con React y TypeScript sobre **Vite**, se organiza mediante **Screaming Architecture por funcionalidades** y utiliza **un único feature inicial: `phrases`**. No replica la arquitectura hexagonal ni los agregados del backend.
 
 El backend conserva la autoridad sobre validación semántica, reglas de negocio, vigencia y consumo del token de validación, y persistencia. El frontend conserva la responsabilidad de la experiencia de usuario y del flujo de confirmación. Los endpoints y campos exactos se ajustarán al contrato OpenAPI aprobado cuando esté disponible.
 
 ## 2. Principios arquitectónicos
 
 1. **Organización por capacidad de negocio:** el árbol de carpetas debe revelar `phrases` como funcionalidad principal.
-2. **Simplicidad:** no agregar clases, interfaces, services o capas para operaciones que no los necesitan.
-3. **Responsabilidades explícitas:** presentación, estado de UI, coordinación opcional y HTTP tienen límites diferentes.
+2. **Simplicidad:** no agregar clases, interfaces o capas adicionales para operaciones que no las necesitan. El acceso a la API siempre pasa por un service.
+3. **Responsabilidades explícitas:** presentación, estado de UI, coordinación y HTTP tienen límites diferentes.
 4. **Anti-Corruption Layer ligera:** los contratos DTO externos se traducen a modelos internos en la frontera API cuando existe transformación; los componentes no consumen DTOs directamente.
 5. **Colocalización:** componentes, páginas, hooks y services tienen carpetas autocontenidas; tipos, pruebas y utilidades cercanos a sus consumidores.
 6. **Dependencias controladas:** `shared/` nunca importa funcionalidades ni composición de aplicación; no se permiten ciclos.
@@ -33,42 +33,42 @@ Las páginas pertenecen al feature: `features/phrases/pages/phrases/`. `app/` al
 
 ## 4. Capas pragmáticas y responsabilidades
 
-| Ubicación | Responsabilidad | No debe hacer |
-|---|---|---|
-| `app/` | Inicio de la aplicación, rutas, providers globales | Reglas de frases o llamadas de negocio |
-| `pages/` del feature | Composición de la pantalla y secciones | HTTP directo, transformación de DTOs |
-| `components/` | Renderizado, interacción y accesibilidad | Acceder a Axios o DTOs de NestJS |
-| `hooks/` | Estado React y del flujo, composición de React Hook Form/TanStack Query, handlers | Implementar transporte HTTP o lógica de persistencia |
-| `services/` (opcionales) | Coordinar lógica de aplicación independiente de React si aporta valor | Ser delegadores triviales hacia API; importar React |
-| `interfaces/` | Tipos/modelos internos del feature | Depender de contratos HTTP externos |
-| `schemas/` | Validación local de formularios con Zod | Sustituir validación de negocio del backend |
-| `api/` | Funciones HTTP de frases y ACL mediante DTOs y mappers | Gestionar estado visual, modales o navegación |
-| `shared/api/` | Configuración y normalización técnica del cliente Axios | Interpretar reglas específicas de frases |
-| `shared/components/ui/` | Componentes visuales genéricos | Importar código de `features/` |
+| Ubicación                | Responsabilidad                                                                   | No debe hacer                                        |
+| ------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `app/`                   | Inicio de la aplicación, rutas, providers globales                                | Reglas de frases o llamadas de negocio               |
+| `pages/` del feature     | Composición de la pantalla y secciones                                            | HTTP directo, transformación de DTOs                 |
+| `components/`            | Renderizado, interacción y accesibilidad                                          | Acceder a Axios o DTOs de NestJS                     |
+| `hooks/`                 | Estado React y del flujo, composición de React Hook Form/TanStack Query, handlers | Implementar transporte HTTP o lógica de persistencia |
+| `services/`              | Único punto de acceso a `api/` desde el feature; coordina lógica de aplicación    | Importar React                                       |
+| `interfaces/`            | Tipos/modelos internos del feature                                                | Depender de contratos HTTP externos                  |
+| `schemas/`               | Validación local de formularios con Zod                                           | Sustituir validación de negocio del backend          |
+| `api/`                   | Funciones HTTP de frases y ACL mediante DTOs y mappers                            | Gestionar estado visual, modales o navegación        |
+| `shared/api/`            | Configuración y normalización técnica del cliente Axios                           | Interpretar reglas específicas de frases             |
+| `shared/components/ui/`  | Componentes visuales genéricos                                                    | Importar código de `features/`                       |
 
-**Services no obligatorios.** Un hook puede consumir directamente una función de `phrases.api.ts`. Solo se introduce un service si hay coordinación no trivial, reutilizable y comprobable sin React.
+**Services obligatorios.** Los hooks no llaman a `phrases.api.ts` directamente: toda conexión con la API pasa por un service, que es independiente de React y comprobable sin él.
 
 ## 5. Convenciones y estructura de carpetas
 
 Todos los **archivos** y directorios de unidades se denominan en **kebab-case**. Los símbolos TypeScript conservan sus convenciones: componentes, tipos e interfaces en `PascalCase`; funciones, hooks y variables en `camelCase`; constantes globales en `UPPER_SNAKE_CASE` cuando corresponda.
 
-| Tipo de archivo | Patrón | Ejemplo |
-|---|---|---|
-| Componente | `.component.tsx` | `phrase-form.component.tsx` |
-| Página | `.page.tsx` | `phrases.page.tsx` |
-| Hook | `.hook.ts` (o `.tsx` si contiene JSX) | `use-phrases.hook.ts` |
-| Service | `.service.ts` | `phrase-submission.service.ts` |
-| Tipos propios | `.types.ts` | `phrase-form.types.ts` |
-| Tipos/modelo interno | `.interfaces.ts` (o `.enum.ts` para enumeraciones) | `phrase.interfaces.ts` |
-| DTO | `.dto.ts` | `phrase-response.dto.ts` |
-| Mapper | `.mapper.ts` | `phrase.mapper.ts` |
-| Schema | `.schema.ts` | `phrase.schema.ts` |
-| Función API | `.api.ts` | `phrases.api.ts` |
-| Utilidades/constantes | `.util.ts` / `.constants.ts` | `phrase-form.util.ts` |
-| Provider | `.provider.tsx` | `query.provider.tsx` |
-| Estilos propios opcionales | `.scss` | `phrase-form.scss` |
-| Prueba | `.spec.ts` / `.spec.tsx` | `phrase-form.spec.tsx` |
-| Exportación pública de unidad | `index.ts` | `components/phrase-form/index.ts` |
+| Tipo de archivo               | Patrón                                             | Ejemplo                           |
+| ----------------------------- | -------------------------------------------------- | --------------------------------- |
+| Componente                    | `.component.tsx`                                   | `phrase-form.component.tsx`       |
+| Página                        | `.page.tsx`                                        | `phrases.page.tsx`                |
+| Hook                          | `.hook.ts` (o `.tsx` si contiene JSX)              | `use-phrases.hook.ts`             |
+| Service                       | `.service.ts`                                      | `phrase-submission.service.ts`    |
+| Tipos propios                 | `.types.ts`                                        | `phrase-form.types.ts`            |
+| Tipos/modelo interno          | `.interfaces.ts` (o `.enum.ts` para enumeraciones) | `phrase.interfaces.ts`            |
+| DTO                           | `.dto.ts`                                          | `phrase-response.dto.ts`          |
+| Mapper                        | `.mapper.ts`                                       | `phrase.mapper.ts`                |
+| Schema                        | `.schema.ts`                                       | `phrase.schema.ts`                |
+| Función API                   | `.api.ts`                                          | `phrases.api.ts`                  |
+| Utilidades/constantes         | `.util.ts` / `.constants.ts`                       | `phrase-form.util.ts`             |
+| Provider                      | `.provider.tsx`                                    | `query.provider.tsx`              |
+| Estilos propios opcionales    | `.scss`                                            | `phrase-form.scss`                |
+| Prueba                        | `.spec.ts` / `.spec.tsx`                           | `phrase-form.spec.tsx`            |
+| Exportación pública de unidad | `index.ts`                                         | `components/phrase-form/index.ts` |
 
 **Estructura de referencia (no lista obligatoria de archivos):**
 
@@ -117,7 +117,7 @@ apps/frontend/
 │   │       │       ├── use-phrase-submission.hook.ts
 │   │       │       ├── use-phrase-submission.types.ts # si aplica
 │   │       │       └── use-phrase-submission.spec.ts
-│   │       ├── services/                              # solo si aporta valor
+│   │       ├── services/
 │   │       │   └── phrase-submission/
 │   │       │       ├── index.ts
 │   │       │       ├── phrase-submission.service.ts
@@ -179,9 +179,8 @@ Las respuestas de TanStack Query y de los hooks orientadas a componentes serán 
 ```mermaid
 flowchart LR
     UI[Componente React] --> HOOK[Hook del feature]
-    HOOK --> SERVICE[Service opcional]
-    HOOK --> API[phrases.api]
-    SERVICE --> API
+    HOOK --> SERVICE[Service]
+    SERVICE --> API[phrases.api]
     API --> HTTP[Axios compartido]
     HTTP <--> BE[API REST NestJS]
     API --> ACL[DTOs + Mappers]
@@ -209,53 +208,18 @@ La capa API transforma tanto respuestas como solicitudes si lo requiere el contr
 - Si el usuario cancela, no se solicita el guardado. Si el token vence o el backend rechaza la operación, la interfaz solicita repetir la validación; nunca guarda implícitamente.
 - Ante falla de red o backend se conserva el texto introducido y se ofrece reintentar cuando sea seguro.
 
-```mermaid
-sequenceDiagram
-    actor U as Usuario
-    participant FE as Formulario y hook
-    participant API as Feature API
-    participant BE as NestJS
-    U->>FE: Introduce frase
-    FE->>FE: Validación local Zod
-    U->>FE: Solicita validación
-    FE->>API: Validar texto
-    API->>BE: REST validar
-    BE-->>API: Resultado + coincidencia + score + token
-    API-->>FE: Modelo interno de validación
-    alt Posible duplicado
-        FE-->>U: Mostrar advertencia y confirmación
-        alt Cancela
-            U->>FE: Cancelar
-            FE-->>U: No guardar
-        else Confirma
-            U->>FE: Confirmar guardado
-            FE->>API: Guardar con token y confirmación
-        end
-    else Sin duplicado
-        FE->>API: Guardar con token según contrato
-    end
-    opt Guardado solicitado
-        API->>BE: REST crear
-        BE-->>API: Frase registrada o error controlado
-        API-->>FE: Modelo interno o error
-        FE->>FE: Invalidar listado con TanStack Query si fue exitoso
-    end
-```
-
-El diagrama es de comportamiento, no define el nombre ni contenido exacto de los endpoints.
-
 ## 10. Estrategia de testing
 
-Herramientas aprobadas: **Vitest + React Testing Library + MSW**. No se incorpora Playwright al MVP. Preferir pruebas de comportamiento y casos límite, no snapshots masivos ni cobertura artificial.
+Herramientas aprobadas: **Vitest + React Testing Library + MSW**. No se incorpora Playwright al MVP. Ver alternativas evaluadas en [Alternativas de librerías evaluadas](#alternativas-de-librerías-evaluadas) al final de este documento. Preferir pruebas de comportamiento y casos límite, no snapshots masivos ni cobertura artificial.
 
-| Sujeto | Enfoque | Ubicación |
-|---|---|---|
-| Componente | Interacción, accesibilidad esencial, errores y estados visibles | `components/<nombre>/<nombre>.spec.tsx` |
-| Página | Composición e integración funcional pertinente | `pages/<nombre>/<nombre>.spec.tsx` |
-| Hook | Estados, transiciones e invalidaciones | `hooks/<nombre>/<nombre>.spec.ts` o `.tsx` |
-| Service opcional | Coordinación pura mediante dobles de API | `services/<nombre>/<nombre>.spec.ts` |
-| Mapper | Transformaciones, nulos, fechas y límites de contrato | Test junto a su `.mapper.ts` |
-| HTTP/flujo | Comportamiento con respuestas simuladas por MSW | `features/phrases/__tests__/*.integration.spec.tsx` |
+| Sujeto           | Enfoque                                                         | Ubicación                                           |
+| ---------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| Componente       | Interacción, accesibilidad esencial, errores y estados visibles | `components/<nombre>/<nombre>.spec.tsx`             |
+| Página           | Composición e integración funcional pertinente                  | `pages/<nombre>/<nombre>.spec.tsx`                  |
+| Hook             | Estados, transiciones e invalidaciones                          | `hooks/<nombre>/<nombre>.spec.ts` o `.tsx`          |
+| Service          | Coordinación pura mediante dobles de API                        | `services/<nombre>/<nombre>.spec.ts`                |
+| Mapper           | Transformaciones, nulos, fechas y límites de contrato           | Test junto a su `.mapper.ts`                        |
+| HTTP/flujo       | Comportamiento con respuestas simuladas por MSW                 | `features/phrases/__tests__/*.integration.spec.tsx` |
 
 Escenarios prioritarios: listado inicial y vacío, formulario inválido, validación en curso, resultado sin coincidencia, posible duplicado con confirmación/cancelación, guardado exitoso, invalidación del listado, error de red, expiración de validación, cambio de texto posterior a validación y prevención de doble envío.
 
@@ -268,15 +232,14 @@ flowchart TD
     FEATURE --> SHARED
     PAGE[Feature: pages] --> COMPONENT[Feature: components]
     COMPONENT --> HOOK[Feature: hooks]
-    HOOK --> API[Feature: api]
-    HOOK --> SERVICE[Feature: services opcional]
-    SERVICE --> API
-    API --> SHAREDHTTP[shared/api]
+    HOOK --> SERVICE[Feature: services]
+    SERVICE --> API[Feature: api]
+    API --> SHAREDHTTP[shared/api - cliente Axios]
 ```
 
 1. `shared/` no importa `app/` ni `features/`.
 2. `app/` compone providers y rutas; puede importar la página pública del feature.
-3. Los componentes no deben acceder al HTTP ni a DTOs; consumen props, hooks y modelos internos.
+3. Los componentes no deben acceder al HTTP ni a DTOs; consumen props, hooks y modelos internos. Los hooks no importan `api/` directamente: pasan por un service.
 4. Los hooks no importan `app/`; los services no importan React.
 5. DTOs se limitan a la frontera API; los modelos internos no dependen de Axios.
 6. Se permiten importaciones directas dentro del feature, pero sin ciclos ni acceso indiscriminado a los archivos internos de otras unidades.
@@ -286,24 +249,36 @@ flowchart TD
 
 ## 12. Registro de decisiones aprobadas
 
-| ID | Decisión aprobada |
-|---|---|
-| B03-D01 | Screaming Architecture por features; DTOs + mappers + modelos internos como ACL; sin arquitectura hexagonal frontend |
-| B03-D02 | Hooks para estado React y coordinación; services opcionales cuando exista lógica de aplicación real |
-| B03-D03 | Un único feature inicial `phrases` |
-| B03-D04 | React Hooks + TanStack Query para estado remoto; sin Zustand/Redux |
-| B03-D05 | Axios con cliente HTTP centralizado |
-| B03-D06 | React Hook Form + Zod + resolver para formularios |
-| B03-D07 | Tailwind CSS y componentes UI propios; SCSS opcional cuando se justifique |
-| B03-D08 | Errores técnicos normalizados en `shared/api/`; feedback funcional dentro de `phrases` |
-| B03-D09 | React Router desde el inicio; una página inicial |
-| B03-D10 | Vitest + React Testing Library + MSW; sin Playwright inicial |
-| B03-D11 | Dependencias controladas, `shared/` mínimo, `app/` para configuración y páginas dentro del feature |
-| B03-D12 | Aprobación de la estructura base y de su enfoque ligero; servicios/mappers no artificiosos y tests cercanos |
+| ID      | Decisión aprobada                                                                                                                 |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| B03-D01 | Screaming Architecture por features; DTOs + mappers + modelos internos como ACL; sin arquitectura hexagonal frontend              |
+| B03-D02 | Hooks para estado React; services obligatorios como único acceso a la API                                                         |
+| B03-D03 | Un único feature inicial `phrases`                                                                                                |
+| B03-D04 | React Hooks + TanStack Query para estado remoto; sin Zustand/Redux                                                                |
+| B03-D05 | Axios con cliente HTTP centralizado                                                                                               |
+| B03-D06 | React Hook Form + Zod + resolver para formularios                                                                                 |
+| B03-D07 | Tailwind CSS y componentes UI propios; SCSS opcional cuando se justifique                                                         |
+| B03-D08 | Errores técnicos normalizados en `shared/api/`; feedback funcional dentro de `phrases`                                            |
+| B03-D09 | React Router desde el inicio; una página inicial                                                                                  |
+| B03-D10 | Vitest + React Testing Library + MSW; sin Playwright inicial                                                                      |
+| B03-D11 | Dependencias controladas, `shared/` mínimo, `app/` para configuración y páginas dentro del feature                                |
+| B03-D12 | Aprobación de la estructura base y de su enfoque ligero; servicios/mappers no artificiosos y tests cercanos                       |
 | B03-D13 | Archivos en kebab-case con sufijos `.component`, `.page`, `.hook`, `.service`, `.model`, `.dto`, `.mapper`, `.schema` y similares |
-| B03-D14 | Componentes y páginas en carpetas autocontenidas, con `index.ts` y tipos/tests/utilidades/SCSS colocalizados cuando corresponda |
-| B03-D15 | Tipos cercanos a su responsabilidad y hooks autocontenidos (`index.ts`, `.hook.ts`, `.types.ts`, `.spec.ts`) |
-| B03-D16 | Services opcionales también autocontenidos (`index.ts`, `.service.ts`, `.types.ts`, `.spec.ts`) |
+| B03-D14 | Componentes y páginas en carpetas autocontenidas, con `index.ts` y tipos/tests/utilidades/SCSS colocalizados cuando corresponda   |
+| B03-D15 | Tipos cercanos a su responsabilidad y hooks autocontenidos (`index.ts`, `.hook.ts`, `.types.ts`, `.spec.ts`)                      |
+| B03-D16 | Services también autocontenidos (`index.ts`, `.service.ts`, `.types.ts`, `.spec.ts`)                                   |
+
+## Alternativas de librerías evaluadas
+
+| Decisión                                                           | Alternativas consideradas                                         | Justificación                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vite                                                               | Create React App, `webpack` configurado a mano, Next.js           | CRA está deprecado oficialmente; Next.js añade SSR/routing de servidor innecesario para una SPA pura; Vite da dev server y HMR rápidos con configuración mínima.                                                                                                                                                                 |
+| Axios como cliente HTTP centralizado (`shared/api/http-client.ts`) | `fetch` nativo                                                    | Los interceptors de Axios centralizan baseURL, headers y errores técnicos, que es justo el punto de la capa anticorrupción de la Sección 7; con `fetch` habría que reconstruir esa capa a mano.                                                                                                                                  |
+| React Hook Form + Zod (`@hookform/resolvers`)                      | Formik                                                            | Inputs no controlados (menos re-renders que Formik) y reutiliza la misma librería de esquemas (Zod) que ya se usa en otras fronteras del proyecto.                                                                                                                                                                               |
+| TanStack Query para estado remoto                                  | Redux, Zustand                                                    | No hay estado global complejo en el MVP: TanStack ya cubre cache e invalidación de red sin el boilerplate de una store.                                                                                                                                                                                                          |
+| Tailwind CSS + componentes UI propios                              | shadcn/ui o librería visual completa; SCSS como sistema principal | Utility-first sin runtime ni tema a mantener aparte; el proyecto tiene pocos controles propios (`button`, `input`, `modal`) y no justifica el peso de una librería de componentes completa. SCSS queda disponible solo para casos puntuales.                                                                                     |
+| React Router                                                       | TanStack Router                                                   | Estándar de facto con menor curva de entrada; TanStack Router añade generación de tipos de rutas que no aporta valor con una sola pantalla activa.                                                                                                                                                                               |
+| Vitest + React Testing Library + MSW                               | Jest + RTL; Playwright                                            | Vitest corre sobre el mismo motor que Vite (el dev server), sin configuración de transform aparte como exigiría Jest aquí. Playwright es E2E de navegador real, fuera de alcance del MVP. **Nota de alcance:** en el código, MSW se usa hoy en un único spec (`phrases.data.spec.ts`, el POST de creación), no en toda la suite. |
 
 ## 13. Trazabilidad y verificaciones pendientes
 

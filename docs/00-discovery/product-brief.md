@@ -481,11 +481,11 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | Q-001 | ¿Qué modelo de embeddings de Hugging Face se usará en el MVP? | [MiniLM con inferencia local en Node.js](../01-ai-feasibility/model-decision.md) (DEC-022) | RESOLVED | AI Feasibility |
 | Q-002 | ¿Cuál es el valor inicial del umbral? | `0.8538613695045911` para MiniLM, configurable; [resultado y límites](../01-ai-feasibility/model-decision.md) | RESOLVED | AI Feasibility |
 | Q-003 | ¿La inferencia se consume como servicio o se ejecuta localmente? | Local en Node.js para el MVP (DEC-022) | RESOLVED | Arquitectura |
-| Q-004 | ¿Cuál será el tiempo máximo antes de declarar timeout? | Definirlo a partir del modo de inferencia y mantener el objetivo normal de 5 segundos | PENDING | Arquitectura |
-| Q-005 | ¿Cómo se representan frases y metadata en SQL y qué información complementaria usaría JSON? | Mantener como campos estructurados los datos principales y evaluar JSON solo para detalles variables | PENDING | Arquitectura |
-| Q-006 | ¿Cuáles son los contratos concretos de la API REST? | Derivarlos de los flujos y criterios aprobados | PENDING | Arquitectura / SDD |
-| Q-007 | ¿Cómo se resuelven empates exactos entre candidatas semánticas? | Usar un criterio determinista y documentado | PENDING | Arquitectura / SDD |
-| Q-008 | ¿Qué garantía de consistencia se aplicará a solicitudes concurrentes similares? | Definirla sin cambiar el flujo HITL aprobado | PENDING | Arquitectura / SDD |
+| Q-004 | ¿Cuál será el tiempo máximo antes de declarar timeout? | `AI_INFERENCE_TIMEOUT_MS=5000`, configurable, aplicado en el cliente HTTP hacia TEI | RESOLVED | Arquitectura |
+| Q-005 | ¿Cómo se representan frases y metadata en SQL y qué información complementaria usaría JSON? | Campos estructurados en `phrases` y `phrase_validations`; sin columnas JSON | RESOLVED | Arquitectura |
+| Q-006 | ¿Cuáles son los contratos concretos de la API REST? | Controllers y DTOs de `phrases` y `phrase-validations` implementados | RESOLVED | Arquitectura / SDD |
+| Q-007 | ¿Cómo se resuelven empates exactos entre candidatas semánticas? | `ORDER BY` distancia ASC, id ASC (vectorial) y `created_at` DESC, id DESC (textual); ver nota de EC-008 | RESOLVED | Arquitectura / SDD |
+| Q-008 | ¿Qué garantía de consistencia se aplicará a solicitudes concurrentes similares? | Consumo condicional de la validación dentro de la transacción de registro; ver nota de EC-012 | RESOLVED | Arquitectura / SDD |
 
 > **Nota (código):** el código no ejecuta MiniLM dentro de Node.js: llama a un contenedor Text Embeddings Inference (TEI 1.9.4, float32, mean pooling, 384 dimensiones) mediante LangChain `OpenAIEmbeddings` (`apiKey` vacía). El modelo es `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, no la variante Xenova/ONNX q8.
 
@@ -520,7 +520,7 @@ Las preguntas abiertas son técnicas y no bloquean la aprobación del alcance de
 
 ## 14. Next Steps
 
-1. Seguir el [plan de ejecución del MVP](../01-ai-feasibility/experiment-plan.md) con MiniLM local y un umbral inicial configurable.
+1. Seguir la [decisión de modelo](../01-ai-feasibility/model-decision.md) con MiniLM y un umbral inicial configurable.
 2. Implementar el flujo de validar, decidir y guardar; completar lista, eliminación, manejo de errores y pruebas del backend con PostgreSQL.
 3. Entregar README de instalación, variables de entorno, API documentada y una demostración reproducible de la integración de IA.
 

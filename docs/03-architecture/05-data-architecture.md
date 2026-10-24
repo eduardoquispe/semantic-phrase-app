@@ -12,7 +12,6 @@ la frase y después marca la validación como consumida (en una
 **única transacción**; ver §9.2). TTL configurable (15 minutos por defecto); respuesta y
 fila comparten expiración.
 
-
 **Proyecto:** Semantic Phrase App  
 **Estado:** Diseño aprobado, revisado contra el código implementado — decisiones B05-D01 a B05-D23  
 **Fecha:** 21 de octubre de 2026  
@@ -29,24 +28,24 @@ La validación semántica se produce **antes** del registro definitivo: se gener
 
 ## 2. Fuentes y compatibilidad con bloques anteriores
 
-| Fuente | Restricciones heredadas |
-|---|---|
-| `docs/03-architecture/01-system-overview.md` | Monolito modular; apps independientes (submódulos Git, sin pnpm workspaces); NestJS REST síncrono; backend hexagonal; frontend React por funcionalidades; HITL. |
-| `docs/03-architecture/02-backend-architecture.md` | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; casos de uso (validar, crear, listar, eliminar); `PhraseRepositoryPort` y `PhraseValidationRepositoryPort`; referencia UUID. |
-| `docs/03-architecture/04-ai-architecture.md` | MiniLM `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` servido por TEI (float32, mean pooling), 384 dimensiones; coseno; Top-1 exacto; umbral inicial `0.8538613695045911`; un solo modelo activo y versionado compatible. |
-| Evaluación **«Evaluación y decisión de modelo para el MVP»** (`docs/01-ai-feasibility/model-decision.md`) | Línea base de evaluación de MiniLM y viabilidad del flujo PostgreSQL/pgvector; no supone garantía de detección semántica perfecta. |
+| Fuente                                                                                                    | Restricciones heredadas                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/03-architecture/01-system-overview.md`                                                              | Monolito modular; apps independientes (submódulos Git, sin pnpm workspaces); NestJS REST síncrono; backend hexagonal; frontend React por funcionalidades; HITL.                                                                          |
+| `docs/03-architecture/02-backend-architecture.md`                                                         | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; casos de uso (validar, crear, listar, eliminar); `PhraseRepositoryPort` y `PhraseValidationRepositoryPort`; referencia UUID.                                          |
+| `docs/03-architecture/04-ai-architecture.md`                                                              | MiniLM `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` servido por TEI (float32, mean pooling), 384 dimensiones; coseno; Top-1 exacto; umbral inicial `0.8538613695045911`; un solo modelo activo y versionado compatible. |
+| Evaluación **«Evaluación y decisión de modelo para el MVP»** (`docs/01-ai-feasibility/model-decision.md`) | Línea base de evaluación de MiniLM y viabilidad del flujo PostgreSQL/pgvector; no supone garantía de detección semántica perfecta.                                                                                                       |
 
 ## 3. Tecnologías y decisiones de infraestructura
 
-| Componente | Elección | Justificación |
-|---|---|---|
-| Base relacional | PostgreSQL | Transacciones ACID, restricciones, índices convencionales. |
-| Extensión | pgvector | Columna `vector(384)` y operador de distancia coseno `<=>`. |
-| Acceso TypeScript | Drizzle ORM | Tipado, consultas SQL transparentes y transacciones. |
-| Migraciones | Drizzle Kit + SQL personalizado | Historial reproducible; habilitar la extensión y otros DDL particulares. |
-| Driver | `pg` vía `drizzle-orm/node-postgres` | Un único cliente Drizzle compartido (`DatabaseProvider`) con `connectionTimeoutMillis` de 5000 ms; sin conexiones por solicitud. |
-| Identidad | UUID v4 | Claves primarias independientes de la base. |
-| Pruebas | Jest unitario + e2e (Supertest) | Los e2e simulan los puertos; no hay base de pruebas ni Testcontainers. |
+| Componente        | Elección                                         | Justificación                                                                                                                                                                                        |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base relacional   | PostgreSQL                                       | Transacciones ACID, restricciones, índices convencionales.                                                                                                                                           |
+| Extensión         | pgvector                                         | Columna `vector(384)` y operador de distancia coseno `<=>`.                                                                                                                                          |
+| Acceso TypeScript | Drizzle ORM                                      | Tipado, consultas SQL transparentes y transacciones. Ver alternativas evaluadas (Prisma, TypeORM) en [Alternativas evaluadas: persistencia](#alternativas-evaluadas-persistencia) de este documento. |
+| Migraciones       | Drizzle Kit + SQL personalizado                  | Historial reproducible; habilitar la extensión y otros DDL particulares.                                                                                                                             |
+| Driver            | `pg` vía `drizzle-orm/node-postgres`             | Un único cliente Drizzle compartido (`DatabaseProvider`) con `connectionTimeoutMillis` de 5000 ms; sin conexiones por solicitud.                                                                     |
+| Identidad         | UUID v4 con `crypto.randomUUID()` nativo de Node | Claves primarias independientes de la base. Ver alternativa evaluada (paquete `uuid` npm) en [Alternativas evaluadas: persistencia](#alternativas-evaluadas-persistencia).                           |
+| Pruebas           | Jest unitario + e2e (Supertest)                  | Los e2e simulan los puertos; no hay base de pruebas ni Testcontainers.                                                                                                                               |
 
 La conexión es una responsabilidad técnica compartida: `DatabaseModule` (no global, en `src/shared/infrastructure/database/`) exporta `DatabaseProvider`, que lee `DATABASE_URL` mediante `ConfigurationPort`, cierra el pool al apagar la aplicación y envuelve los fallos en `DatabaseError`. `PhrasesModule` importa `DatabaseModule` y compone los repositorios mediante DI.
 
@@ -87,17 +86,17 @@ erDiagram
 
 ### 4.1. Tabla `phrases`
 
-| Campo | Tipo PostgreSQL | Nulabilidad y restricciones | Responsabilidad |
-|---|---|---|---|
-| `id` | `UUID` | PK; `NOT NULL` | Identidad del agregado, UUID v4. |
-| `text` | `TEXT` | `NOT NULL` | Texto original de la frase. |
-| `normalized_text` | `TEXT` | `NOT NULL`; índice B-tree **no UNIQUE** | Clave de comparación textual sencilla. |
-| `embedding` | `VECTOR(384)` | `NOT NULL` | Embedding definitivo generado en validación. |
-| `model_id` | `VARCHAR(255)` | `NOT NULL` | Identificador del modelo. |
-| `model_version` | `VARCHAR(150)` | `NOT NULL` | Identidad del espacio vectorial efectivo. |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; sin `DEFAULT` en BD (lo asigna la aplicación) | Ordenación y auditoría mínima. |
-| `status` | `SMALLINT` | `NOT NULL`; `DEFAULT 1`; `CHECK (status IN (1, 2))` | Estado de la frase: `1` = activa, `2` = eliminada (eliminación lógica), irreversible desde el MVP. |
-| `deleted_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Fecha de eliminación; la aplicación lo fija solo al pasar a `status = 2` (no hay `CHECK` que lo exija). |
+| Campo             | Tipo PostgreSQL | Nulabilidad y restricciones                               | Responsabilidad                                                                                         |
+| ----------------- | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`              | `UUID`          | PK; `NOT NULL`                                            | Identidad del agregado, UUID v4.                                                                        |
+| `text`            | `TEXT`          | `NOT NULL`                                                | Texto original de la frase.                                                                             |
+| `normalized_text` | `TEXT`          | `NOT NULL`; índice B-tree **no UNIQUE**                   | Clave de comparación textual sencilla.                                                                  |
+| `embedding`       | `VECTOR(384)`   | `NOT NULL`                                                | Embedding definitivo generado en validación.                                                            |
+| `model_id`        | `VARCHAR(255)`  | `NOT NULL`                                                | Identificador del modelo.                                                                               |
+| `model_version`   | `VARCHAR(150)`  | `NOT NULL`                                                | Identidad del espacio vectorial efectivo.                                                               |
+| `created_at`      | `TIMESTAMPTZ`   | `NOT NULL`; sin `DEFAULT` en BD (lo asigna la aplicación) | Ordenación y auditoría mínima.                                                                          |
+| `status`          | `SMALLINT`      | `NOT NULL`; `DEFAULT 1`; `CHECK (status IN (1, 2))`       | Estado de la frase: `1` = activa, `2` = eliminada (eliminación lógica), irreversible desde el MVP.      |
+| `deleted_at`      | `TIMESTAMPTZ`   | `NULL` permitido; inicialmente `NULL`                     | Fecha de eliminación; la aplicación lo fija solo al pasar a `status = 2` (no hay `CHECK` que lo exija). |
 
 Una frase está **activa** si `status = 1`. Listado, coincidencia textual, Top-1 vectorial y conteo paginado consideran solo frases activas. La eliminación es un `UPDATE ... SET status = 2, deleted_at = NOW() WHERE id = :id AND status = 1`; no hay `DELETE` físico ni restauración.
 
@@ -105,20 +104,20 @@ No habrá `UNIQUE` en `text` o `normalized_text`: HITL puede permitir que una pe
 
 ### 4.2. Tabla `phrase_validations`
 
-| Campo | Tipo PostgreSQL | Nulabilidad y restricciones | Responsabilidad |
-|---|---|---|---|
-| `id` | `UUID` | PK; `NOT NULL` | Identidad independiente de validación, UUID v4. |
-| `text` | `TEXT` | `NOT NULL` | Frase original validada. |
-| `normalized_text` | `TEXT` | `NOT NULL` | Texto normalizado durante la validación. |
-| `embedding` | `VECTOR(384)` | `NOT NULL` | Vector temporal que se reutilizará al crear. |
-| `model_id` | `VARCHAR(255)` | `NOT NULL` | Modelo empleado para esa validación. |
-| `model_version` | `VARCHAR(150)` | `NOT NULL` | Versión efectiva del espacio vectorial. |
-| `similarity_score` | `DOUBLE PRECISION` | `NULL` permitido | Coseno de Top-1 **solo si se calculó por búsqueda vectorial**. |
-| `matched_phrase_id` | `UUID` | `NULL` permitido; sin FK | Coincidencia encontrada; referencia informativa. |
-| `requires_confirmation` | `BOOLEAN` | `NOT NULL` | Resultado funcional calculado por aplicación. |
-| `expires_at` | `TIMESTAMPTZ` | `NOT NULL` | Validez lógica de la validación. |
-| `consumed_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Momento de utilización para el guardado. |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; sin `DEFAULT` en BD | Creación de validación (la aplicación la trunca a segundos, igual que `expires_at`). |
+| Campo                   | Tipo PostgreSQL    | Nulabilidad y restricciones           | Responsabilidad                                                                      |
+| ----------------------- | ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------ |
+| `id`                    | `UUID`             | PK; `NOT NULL`                        | Identidad independiente de validación, UUID v4.                                      |
+| `text`                  | `TEXT`             | `NOT NULL`                            | Frase original validada.                                                             |
+| `normalized_text`       | `TEXT`             | `NOT NULL`                            | Texto normalizado durante la validación.                                             |
+| `embedding`             | `VECTOR(384)`      | `NOT NULL`                            | Vector temporal que se reutilizará al crear.                                         |
+| `model_id`              | `VARCHAR(255)`     | `NOT NULL`                            | Modelo empleado para esa validación.                                                 |
+| `model_version`         | `VARCHAR(150)`     | `NOT NULL`                            | Versión efectiva del espacio vectorial.                                              |
+| `similarity_score`      | `DOUBLE PRECISION` | `NULL` permitido                      | Coseno de Top-1 **solo si se calculó por búsqueda vectorial**.                       |
+| `matched_phrase_id`     | `UUID`             | `NULL` permitido; sin FK              | Coincidencia encontrada; referencia informativa.                                     |
+| `requires_confirmation` | `BOOLEAN`          | `NOT NULL`                            | Resultado funcional calculado por aplicación.                                        |
+| `expires_at`            | `TIMESTAMPTZ`      | `NOT NULL`                            | Validez lógica de la validación.                                                     |
+| `consumed_at`           | `TIMESTAMPTZ`      | `NULL` permitido; inicialmente `NULL` | Momento de utilización para el guardado.                                             |
+| `created_at`            | `TIMESTAMPTZ`      | `NOT NULL`; sin `DEFAULT` en BD       | Creación de validación (la aplicación la trunca a segundos, igual que `expires_at`). |
 
 **Aclaración de `similarity_score`:** para una coincidencia textual exacta prioritaria **no se inventará** una puntuación de coseno. Puede haber `matched_phrase_id` informado y `similarity_score = NULL` cuando la coincidencia es textual. Por B05-D21 no se crea un `CHECK` que exija simultaneidad de ambos campos. El resultado de aplicación distingue `textual_exact`, `vector` y `none` conceptualmente; la representación exacta en HTTP corresponde al bloque API. No se añade una nueva columna para ese discriminador sin aprobación: en esta versión, cuando `matched_phrase_id` exista y `similarity_score` sea `NULL`, se interpreta como coincidencia textual; ambos `NULL` significan ausencia de candidata. La lógica de aplicación verifica la coherencia.
 
@@ -159,7 +158,7 @@ No se exige automatización de reindexado ni doble escritura de embeddings en el
 3. **Si hay coincidencia textual**, la devuelve sin consulta vectorial y sin puntaje (`similarityScore: null`); requiere confirmación.
 4. **Si no hay igualdad textual**, consulta **Top-1 exacto** por coseno sobre frases activas con `model_id` y `model_version` iguales a los vigentes.
 5. **Si no hay candidata vectorial**: sin frases activas → resultado válido sin candidata; con frases activas pero ninguna del modelo/versión vigente → `IncompatiblePhraseCollectionError`, que llega al cliente como 500 `INTERNAL_ERROR`. Los errores de BD se traducen a `DatabaseError` (500 `DATABASE_ERROR`).
-6. La comparación con `AI_SIMILARITY_THRESHOLD` (0.8538613695045911 por defecto, inclusiva `>=`) la resuelve el value object `PhraseValidationMatch` **solo para similitud vectorial**; después se guarda la validación temporal.
+6. La comparación con `AI_SIMILARITY_THRESHOLD` (0.8538613695045911 por defecto, inclusiva `>=`) la resuelve la entidad `PhraseValidation` **solo para similitud vectorial**; después se guarda la validación temporal.
 
 Para múltiples coincidencias textuales iguales se elige una sola con `created_at DESC, id DESC`; en el Top-1 vectorial el desempate es `distance ASC, id ASC`. La puntuación se acota a [-1, 1]. No implica unicidad ni bloqueo del registro.
 
@@ -211,15 +210,15 @@ Tamaño por defecto **20**, máximo 100; `LIMIT/OFFSET`, con valores validados. 
 
 ## 7. Índices y rendimiento
 
-| Tabla | Índice | Propósito | Estado |
-|---|---|---|---|
-| `phrases` | PK B-tree sobre `id` | Identidad | Obligatorio. |
-| `phrases` | B-tree sobre `normalized_text` | Igualdad textual | Aprobado. |
-| `phrases` | B-tree sobre `model_version` (o combinado con `model_id`) | Filtrado eventual | **Condicional** a selectividad/planes; no acelerará por sí solo la distancia coseno. |
-| `phrases` | B-tree compuesto `(created_at DESC, id DESC)` | Listado/paginación | Candidato sencillo; medir antes de introducir un índice redundante. |
-| `phrases` | B-tree sobre `status` (o parcial `WHERE status = 1`) | Filtrar frases activas | Opcional; medir antes de añadirlo. |
-| `phrase_validations` | PK B-tree sobre `id` | Lookup y consumo condicional | Obligatorio. |
-| `phrase_validations` | B-tree sobre `expires_at` | Limpieza manual futura | Opcional, si el volumen lo justifica. |
+| Tabla                | Índice                                                    | Propósito                    | Estado                                                                               |
+| -------------------- | --------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| `phrases`            | PK B-tree sobre `id`                                      | Identidad                    | Obligatorio.                                                                         |
+| `phrases`            | B-tree sobre `normalized_text`                            | Igualdad textual             | Aprobado.                                                                            |
+| `phrases`            | B-tree sobre `model_version` (o combinado con `model_id`) | Filtrado eventual            | **Condicional** a selectividad/planes; no acelerará por sí solo la distancia coseno. |
+| `phrases`            | B-tree compuesto `(created_at DESC, id DESC)`             | Listado/paginación           | Candidato sencillo; medir antes de introducir un índice redundante.                  |
+| `phrases`            | B-tree sobre `status` (o parcial `WHERE status = 1`)      | Filtrar frases activas       | Opcional; medir antes de añadirlo.                                                   |
+| `phrase_validations` | PK B-tree sobre `id`                                      | Lookup y consumo condicional | Obligatorio.                                                                         |
+| `phrase_validations` | B-tree sobre `expires_at`                                 | Limpieza manual futura       | Opcional, si el volumen lo justifica.                                                |
 
 No se crearán **HNSW ni IVFFlat**, porque el contrato exige Top-1 exacto. Estos índices soportan recuperación aproximada; requieren una revisión explícita de B04-D06 antes de usarlos. La consulta exacta se evaluará más adelante con `EXPLAIN (ANALYZE, BUFFERS)` al disponer de datos representativos. Evitar agregar todos los índices candidatos sin comprobar su utilidad.
 
@@ -240,10 +239,10 @@ flowchart TB
     D --> DB[(PostgreSQL + pgvector)]
 ```
 
-| Adaptador | Tablas | Operaciones pertinentes |
-|---|---|---|
-| `DrizzlePhraseRepository` | `phrases` | `save`, `findValidationMatch` (textual → Top-1 → comprobación de compatibilidad), `list` paginado, `softDelete` (`UPDATE ... WHERE status = 1 RETURNING`). |
-| `DrizzlePhraseValidationRepository` | `phrase_validations` | `save`, `update` (p. ej. `consumed_at`), `findById`. |
+| Adaptador                           | Tablas               | Operaciones pertinentes                                                                                                                                    |
+| ----------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DrizzlePhraseRepository`           | `phrases`            | `save`, `findValidationMatch` (textual → Top-1 → comprobación de compatibilidad), `list` paginado, `softDelete` (`UPDATE ... WHERE status = 1 RETURNING`). |
+| `DrizzlePhraseValidationRepository` | `phrase_validations` | `save`, `update` (p. ej. `consumed_at`), `findById`.                                                                                                       |
 
 Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Hay un repositorio por tabla y un puerto de registro (`PhraseRegistrationPort`) cuyo adaptador Drizzle abre la transacción de registro; no existe `UnitOfWork` ni coordinador genérico.
 
@@ -330,15 +329,15 @@ Cambios de esquema, modelo o normalización se revisarán como migraciones expl�
 
 Por B05-D15, se hace **traducción selectiva** en infraestructura, sin jerarquías SQL extensas.
 
-| Situación | Manejo |
-|---|---|
+| Situación                                                                           | Manejo                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Conexión PostgreSQL fallida, SQL inesperado, error de driver, restricción vulnerada | Cada consulta de ambos repositorios se envuelve en try/catch y lanza `DatabaseError`; `ProblemDetailsFilter` responde 500 `DATABASE_ERROR` sin exponer SQL ni credenciales (la causa se registra en log). |
-| `softDelete` afecta cero filas | `PhraseNotFoundError` → 404 `PHRASE_NOT_FOUND`. |
-| Validación expirada o consumida | Error de aplicación (409); no se registra frase. |
-| Incompatibilidad de modelo/versión al registrar | 409 `INCOMPATIBLE_MODEL`. |
-| Corpus activo sin frases del modelo vigente al validar (sin igualdad textual) | `IncompatiblePhraseCollectionError`, sin filtro dedicado → 500 `INTERNAL_ERROR`. |
-| Falla del `UPDATE` de consumo tras insertar | 500 `DATABASE_ERROR`; la frase queda insertada (ver §9.2). |
-| Coincidencia textual o semántica | Resultado **funcional**; requiere HITL cuando corresponda, no error técnico. |
+| `softDelete` afecta cero filas                                                      | `PhraseNotFoundError` → 404 `PHRASE_NOT_FOUND`.                                                                                                                                                           |
+| Validación expirada o consumida                                                     | Error de aplicación (409); no se registra frase.                                                                                                                                                          |
+| Incompatibilidad de modelo/versión al registrar                                     | 409 `INCOMPATIBLE_MODEL`.                                                                                                                                                                                 |
+| Corpus activo sin frases del modelo vigente al validar (sin igualdad textual)       | `IncompatiblePhraseCollectionError`, sin filtro dedicado → 500 `INTERNAL_ERROR`.                                                                                                                          |
+| Falla del `UPDATE` de consumo tras insertar                                         | 500 `DATABASE_ERROR`; la frase queda insertada (ver §9.2).                                                                                                                                                |
+| Coincidencia textual o semántica                                                    | Resultado **funcional**; requiere HITL cuando corresponda, no error técnico.                                                                                                                              |
 
 `ProblemDetailsFilter` (global) y filtros específicos por ruta transforman los errores a Problem Details; el contrato está en `06-api-security.md` y `openapi.yaml`.
 
@@ -346,13 +345,13 @@ Por B05-D15, se hace **traducción selectiva** en infraestructura, sin jerarquí
 
 **Decisión B05-D16 (estado real):** pruebas unitarias Jest junto al código (incluidos los repositorios Drizzle con cliente simulado) y 4 suites e2e con Supertest en `apps/backend/test/` que simulan repositorios, generador de embeddings y configuración. No hay base de pruebas, Testcontainers ni pipeline de integración con PostgreSQL/TEI reales.
 
-| Área | Pruebas unitarias sugeridas |
-|---|---|
-| Dominio | Identidad, invariantes, expiración, consumo. |
-| `ValidatePhraseUseCase` | Prioridad textual, comparación con umbral, ausencia de candidata, incompatibilidad de versión, fallos controlados. |
-| `CreatePhraseUseCase` | Confirmación, reutilización del embedding, sin inferencia repetida, rechazo de validación vencida, consumida o de modelo incompatible. |
-| Mappers | Reconstrucción de entidades, `NULL`, fechas y metadatos. |
-| Lógica aislable de adaptadores | Manejo de resultado sin filas y clasificación selectiva de errores, sin pretender validar SQL real mediante mocks. |
+| Área                           | Pruebas unitarias sugeridas                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Dominio                        | Identidad, invariantes, expiración, consumo.                                                                                           |
+| `ValidatePhraseUseCase`        | Prioridad textual, comparación con umbral, ausencia de candidata, incompatibilidad de versión, fallos controlados.                     |
+| `CreatePhraseUseCase`          | Confirmación, reutilización del embedding, sin inferencia repetida, rechazo de validación vencida, consumida o de modelo incompatible. |
+| Mappers                        | Reconstrucción de entidades, `NULL`, fechas y metadatos.                                                                               |
+| Lógica aislable de adaptadores | Manejo de resultado sin filas y clasificación selectiva de errores, sin pretender validar SQL real mediante mocks.                     |
 
 **Riesgo aceptado:** las pruebas unitarias no demuestran que el DDL, pgvector o el plan Top-1 operen correctamente sobre PostgreSQL. Antes de considerar terminado el reto se requiere una **comprobación manual real y no destructiva** de: extensión activa, migraciones, guardado y lectura de vector 384, recuperación coseno conocida, prioridad textual, ausencia de candidata, y el comportamiento transaccional del registro (rollback y doble POST simultáneo). No se confunde esta comprobación con cobertura automatizada de integración. El umbral se calibró con vectores Xenova ONNX `q8` y hoy se aplica a vectores TEI float32 sin recalibración registrada: es un **riesgo de integración del Bloque 04**, no verificado aquí.
 
@@ -386,31 +385,38 @@ sequenceDiagram
 
 ## 14. Registro de decisiones aprobadas y trade-offs
 
-| ID | Decisión confirmada | Trade-off / límite |
-|---|---|---|
-| B05-D01 | Drizzle ORM y Drizzle Kit | Buen tipado; requiere revisar SQL de migraciones. |
-| B05-D02 | Dos tablas con embedding integrado | Simplicidad; cambio de dimensiones implica migración. |
-| B05-D03 | UUID v4 para ambos agregados | Identidades autónomas; índices más amplios que enteros. |
-| B05-D04 | `text` y `normalized_text` | Consultas rápidas; requiere sincronización lógica en aplicación. |
-| B05-D05 | Normalización TypeScript simple | Testeable; escrituras directas externas podrían omitirla. |
-| B05-D06 | `expires_at` y `consumed_at`, sin `status` | Sin estados redundantes; condición temporal en consultas. |
-| B05-D07 | Sin FK entre tablas de agregados | Limpieza independiente; menor trazabilidad histórica. |
-| B05-D08 | `VECTOR(384)` + `model_id` y `model_version` | Garantiza dimensión, no equivalencia semántica. |
-| B05-D09 | Top-1 exacto; índices convencionales; sin ANN | Recuperación exacta; coste crece con volumen. |
-| B05-D10 | **Revisada:** transacción con `UPDATE` condicional de `consumed_at` e `INSERT` de la frase (`PhraseRegistrationPort`) | Atómico e impide el doble consumo concurrente. |
-| B05-D11 | Limpieza manual | Sin scheduler; requiere mantenimiento eventual. |
-| B05-D12 | **Revisada:** dos repositorios (uno por tabla), sin adaptador de registro | Separación simple; el registro coordina ambos desde el caso de uso. |
-| B05-D13 | Mappers por agregado solo cuando aporten valor | Sin mapper genérico; algo de código específico. |
-| B05-D14 | Drizzle Kit generado + SQL personalizado versionado | Reproducibilidad; revisar orden de migraciones. |
-| B05-D15 | Traducción selectiva de errores | Mantiene aislamiento sin taxonomía excesiva. |
-| B05-D16 | Jest unitario solamente, por ahora | Sin garantía automática de SQL/pgvector. |
-| B05-D17 | Schemas en `PhrasesModule` y conexión técnica compartida | Organización por negocio; configuración Drizzle debe incluir schemas. |
-| B05-D18 | Un cliente Drizzle compartido (`DatabaseProvider`) | Reutilización; el pool se cierra al apagar la app. |
-| B05-D19 | TTL 15 minutos configurable por ENV | Referencia y persistencia deben tener expiración consistente. |
-| B05-D20 | Validez vectorial en el value object `Embedding` + dimensión en BD | Sin comprobación de norma L2 en ningún punto. |
-| B05-D21 | Coherencia de similitud solo en aplicación | SQL simple; sin `CHECK` semánticos. |
-| B05-D22 | Prioridad textual exacta normalizada | Evita consulta vectorial innecesaria; no fabricar coseno. |
-| B05-D23 | Paginación `LIMIT/OFFSET`, 20 por página | Sencillez; menos óptima a gran escala. |
+| ID      | Decisión confirmada                                                                                                   | Trade-off / límite                                                    |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| B05-D01 | Drizzle ORM y Drizzle Kit                                                                                             | Buen tipado; requiere revisar SQL de migraciones.                     |
+| B05-D02 | Dos tablas con embedding integrado                                                                                    | Simplicidad; cambio de dimensiones implica migración.                 |
+| B05-D03 | UUID v4 para ambos agregados                                                                                          | Identidades autónomas; índices más amplios que enteros.               |
+| B05-D04 | `text` y `normalized_text`                                                                                            | Consultas rápidas; requiere sincronización lógica en aplicación.      |
+| B05-D05 | Normalización TypeScript simple                                                                                       | Testeable; escrituras directas externas podrían omitirla.             |
+| B05-D06 | `expires_at` y `consumed_at`, sin `status`                                                                            | Sin estados redundantes; condición temporal en consultas.             |
+| B05-D07 | Sin FK entre tablas de agregados                                                                                      | Limpieza independiente; menor trazabilidad histórica.                 |
+| B05-D08 | `VECTOR(384)` + `model_id` y `model_version`                                                                          | Garantiza dimensión, no equivalencia semántica.                       |
+| B05-D09 | Top-1 exacto; índices convencionales; sin ANN                                                                         | Recuperación exacta; coste crece con volumen.                         |
+| B05-D10 | **Revisada:** transacción con `UPDATE` condicional de `consumed_at` e `INSERT` de la frase (`PhraseRegistrationPort`) | Atómico e impide el doble consumo concurrente.                        |
+| B05-D11 | Limpieza manual                                                                                                       | Sin scheduler; requiere mantenimiento eventual.                       |
+| B05-D12 | **Revisada:** dos repositorios (uno por tabla), sin adaptador de registro                                             | Separación simple; el registro coordina ambos desde el caso de uso.   |
+| B05-D13 | Mappers por agregado solo cuando aporten valor                                                                        | Sin mapper genérico; algo de código específico.                       |
+| B05-D14 | Drizzle Kit generado + SQL personalizado versionado                                                                   | Reproducibilidad; revisar orden de migraciones.                       |
+| B05-D15 | Traducción selectiva de errores                                                                                       | Mantiene aislamiento sin taxonomía excesiva.                          |
+| B05-D16 | Jest unitario solamente, por ahora                                                                                    | Sin garantía automática de SQL/pgvector.                              |
+| B05-D17 | Schemas en `PhrasesModule` y conexión técnica compartida                                                              | Organización por negocio; configuración Drizzle debe incluir schemas. |
+| B05-D18 | Un cliente Drizzle compartido (`DatabaseProvider`)                                                                    | Reutilización; el pool se cierra al apagar la app.                    |
+| B05-D19 | TTL 15 minutos configurable por ENV                                                                                   | Referencia y persistencia deben tener expiración consistente.         |
+| B05-D20 | Validez vectorial en el value object `Embedding` + dimensión en BD                                                    | Sin comprobación de norma L2 en ningún punto.                         |
+| B05-D21 | Coherencia de similitud solo en aplicación                                                                            | SQL simple; sin `CHECK` semánticos.                                   |
+| B05-D22 | Prioridad textual exacta normalizada                                                                                  | Evita consulta vectorial innecesaria; no fabricar coseno.             |
+| B05-D23 | Paginación `LIMIT/OFFSET`, 20 por página                                                                              | Sencillez; menos óptima a gran escala.                                |
+
+## Alternativas evaluadas: persistencia
+
+| Decisión                                         | Alternativas consideradas | Justificación                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Drizzle ORM                                      | Prisma, TypeORM           | `drizzle-orm` trae de fábrica helpers de distancia vectorial (`cosineDistance`, `l2Distance`, `innerProduct`, importados del paquete core, sin dependencia `pgvector` npm aparte); Prisma y TypeORM no ofrecen eso y obligarían a caer a SQL crudo sin ningún helper tipado para la consulta Top-1. La columna `vector(384)` en sí es manual vía `customType()` (`shared/infrastructure/database/pg-vector.column.ts`) — Drizzle permite declararla sin pelear contra el ORM, algo que Prisma no soporta (no admite un tipo de columna arbitrario). |
+| UUID v4 con `crypto.randomUUID()` nativo de Node | Paquete `uuid` npm        | Node ≥14.17 ya expone `randomUUID()` en `node:crypto`; evita una dependencia externa para algo que el runtime ya resuelve.                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## 15. Pendientes delimitados y criterios de cierre
 
