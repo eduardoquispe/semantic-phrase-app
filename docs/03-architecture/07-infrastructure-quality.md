@@ -8,7 +8,7 @@ Los JWT anteriores dejan de formar parte del contrato; las filas existentes pued
 referenciarse por su UUID. No hay migración ni secreto de firma requerido.
 El registro (F003) busca por `validationId`, comprueba vigencia (`now >= expiresAt`
 implica expiración), texto, modelo/versión, confirmación y estado no consumido, inserta
-la frase y después marca la validación como consumida (dos escrituras, sin transacción).
+la frase y después marca la validación como consumida (en una única transacción).
 TTL configurable (15 minutos por defecto); respuesta y fila comparten expiración.
 
 
@@ -28,7 +28,7 @@ Se conservan las decisiones funcionales y arquitectónicas de los bloques anteri
 - **B02:** `PhrasesModule`, DDD ligero, agregados `Phrase` y `PhraseValidation`, puertos, casos de uso `ValidatePhraseUseCase`, `CreatePhraseUseCase`, `ListPhrasesUseCase` y `DeletePhraseUseCase`; Jest en backend.
 - **B03:** organización de React por funcionalidades; Vitest, React Testing Library y MSW; tests colocalizados; TanStack Query, Axios, React Hook Form/Zod y demás decisiones frontend ya aprobadas.
 - **B04 (revisado):** MiniLM `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` servido por un contenedor Text Embeddings Inference (TEI 1.9.4, float32, mean pooling) y consumido mediante LangChain `OpenAIEmbeddings`; 384 dimensiones; umbral configurable `0.8538613695045911` (calibrado con vectores Xenova q8), sin garantía de exactitud perfecta ni modelo adicional.
-- **B05:** PostgreSQL + pgvector, Drizzle ORM y migraciones Drizzle Kit; comparación textual y Top-1 vectorial exacto, validaciones temporales; el registro inserta la frase y luego marca el consumo (sin transacción).
+- **B05:** PostgreSQL + pgvector, Drizzle ORM y migraciones Drizzle Kit; comparación textual y Top-1 vectorial exacto, validaciones temporales; el registro inserta la frase y marca el consumo en una única transacción.
 - **B06 (revisado):** API REST v1, Problem Details (`ProblemDetailsFilter` global + filtros por ruta), referencia UUID temporal de validación HITL (no autenticación de usuarios) y CORS local con origen fijo. No hay Swagger UI, rate limiting ni cabeceras de seguridad adicionales.
 
 Los contratos, invariantes, DTO, endpoints, códigos HTTP y políticas de IA, persistencia y seguridad se mantienen en sus documentos de origen; este bloque no los redefine.

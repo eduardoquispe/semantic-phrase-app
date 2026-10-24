@@ -52,10 +52,10 @@ paths:
       summary: Registrar frase validada
       description: |
         Comprueba referencia UUID v4, original exacto, modelo/versión, vigencia y consumo; exige confirmed=true
-        solo cuando la validación almacenada requiere HITL. Guarda la frase y después
-        marca la validación como consumida, sin transacción ni garantía de registro único
-        concurrente. Si falla el consumo, la frase permanece guardada y se devuelve 500;
-        un reintento puede crear otra frase con la misma validación.
+        solo cuando la validación almacenada requiere HITL. Guarda la frase y marca la
+        validación como consumida en una única transacción: si falla algo, no se guarda
+        nada y se devuelve 500. El consumo es condicional; si una solicitud concurrente
+        ya consumió la validación, se devuelve 409 VALIDATION_ALREADY_USED.
         No recalcula el embedding ni la similitud; permite duplicados confirmados.
         Los parámetros de consulta se ignoran. No aplica rate limiting. Referencia inexistente:
         400 INVALID_VALIDATION_ID. Modelo/versión incompatible: 409 INCOMPATIBLE_MODEL.

@@ -8,7 +8,7 @@ Los JWT anteriores dejan de formar parte del contrato; las filas existentes pued
 referenciarse por su UUID. No hay migración ni secreto de firma requerido.
 El registro (F003) busca por `validationId`, comprueba vigencia (`now >= expiresAt`
 implica expiración), texto, modelo/versión, confirmación y estado no consumido, inserta
-la frase y después marca la validación como consumida (dos escrituras, sin transacción).
+la frase y después marca la validación como consumida (en una única transacción).
 TTL configurable (15 minutos por defecto); respuesta y fila comparten expiración.
 
 
@@ -29,7 +29,7 @@ La aplicación permite listar frases, validar una frase candidata frente a frase
 | `02-backend-architecture.md` | `PhrasesModule`; `ValidatePhraseUseCase`, `CreatePhraseUseCase`, `ListPhrasesUseCase`, `DeletePhraseUseCase`; DTOs solo en HTTP; referencia UUID; puertos hexagonales; agregados `Phrase` y `PhraseValidation` separados |
 | `03-frontend-architecture.md` | React/TanStack Query/Axios; el frontend presenta coincidencias y gestiona confirmar/cancelar, sin ejecutar embeddings; modelos/DTOs y mappers cercanos al feature |
 | `04-ai-architecture.md` | MiniLM servido por TEI y consumido vía LangChain; float32, pooling mean, 384 dimensiones; umbral configurable inicialmente `0.8538613695045911`; fallo técnico distinto de ausencia de coincidencia |
-| `05-data-architecture.md` | PostgreSQL + pgvector + Drizzle; búsqueda textual primero y Top-1 coseno después; TTL 15 minutos; tabla de validaciones temporal; registro y consumo en dos escrituras sin transacción; listado `LIMIT/OFFSET` |
+| `05-data-architecture.md` | PostgreSQL + pgvector + Drizzle; búsqueda textual primero y Top-1 coseno después; TTL 15 minutos; tabla de validaciones temporal; registro y consumo en una única transacción; listado `LIMIT/OFFSET` |
 
 ## 2. Principios y convenciones REST
 
@@ -47,7 +47,7 @@ La aplicación permite listar frases, validar una frase candidata frente a frase
 |---|---|---|---|---|
 | `GET` | `/api/v1/phrases` | `ListPhrasesUseCase` | 200 | Consultar frases con paginación |
 | `POST` | `/api/v1/phrase-validations` | `ValidatePhraseUseCase` | 201 | Crear validación temporal, generar embedding, resolver coincidencia y devolver validationId |
-| `POST` | `/api/v1/phrases` | `CreatePhraseUseCase` | 201 | Comprobar validación y confirmación; insertar la frase y marcar la validación como consumida (sin transacción) |
+| `POST` | `/api/v1/phrases` | `CreatePhraseUseCase` | 201 | Comprobar validación y confirmación; insertar la frase y marcar la validación como consumida (una transacción) |
 | `DELETE` | `/api/v1/phrases/{id}` | `DeletePhraseUseCase` | 204 | Eliminar lógicamente una frase activa (soft delete) |
 
 No se implementan: login, roles, renovación de sesión, endpoint de confirmación adicional, restauración de frases eliminadas, selección de modelos ni endpoints administrativos.
@@ -222,7 +222,7 @@ La búsqueda del Bloque 05 sigue invariable: generar embedding; buscar coinciden
 2. React muestra `match`, score cuando aplica y advertencia. Si la persona cancela, no llama a creación; la validación vence por expiración lógica.
 3. Si decide registrar, React envía texto, UUID y `confirmed: true` solo si se necesita (también puede enviarlo si no se necesita).
 4. `CreatePhraseUseCase` busca por validationId y comprueba, en orden, existencia, consumo, vigencia, texto asociado, modelo/versión compatible y confirmación necesaria.
-5. El caso de uso inserta la frase (`PhraseRepositoryPort.save`) y después actualiza `consumed_at` (`PhraseValidationRepositoryPort.update`). **No hay transacción**: si el `UPDATE` falla, la frase queda insertada y la respuesta es 500 `DATABASE_ERROR`; dos solicitudes concurrentes pueden registrar dos frases.
+5. El caso de uso llama a `PhraseRegistrationPort.register`: una transacción con `UPDATE consumed_at ... WHERE consumed_at IS NULL` e `INSERT` de la frase. Si algo falla se revierte todo (500 `DATABASE_ERROR`); si ya estaba consumida, 409 `VALIDATION_ALREADY_USED`.
 6. React conserva el texto si la validación caduca. Ofrece **Validar nuevamente** y obtiene nueva coincidencia y UUID; no reutiliza una confirmación emitida para una validación anterior.
 
 La referencia confirma una validación y la declaración `confirmed`, pero **no prueba** que la persona observó la alerta. Dos validaciones distintas aún pueden registrar frases equivalentes; no se bloquean inserciones ajenas entre búsqueda y guardado. La expiración no necesita scheduler; limpieza física manual posterior (las validaciones no consumidas permanecen en la tabla).
@@ -253,7 +253,7 @@ sequenceDiagram
     else Registro
         F->>H: POST /phrases con UUID y confirmed
         H->>C: Crear frase
-        C->>P: INSERT frase y luego UPDATE consumed_at (sin transacción)
+        C->>P: Transacción: UPDATE condicional consumed_at + INSERT frase
         alt Vigente y autorizada
             P-->>C: Frase insertada y validación consumida
             C-->>F: 201 + frase registrada
@@ -308,7 +308,7 @@ stateDiagram-v2
     Expirada --> [*]
 ```
 
-La cancelación es un estado de la experiencia de usuario; **no** se persiste un estado adicional en `phrase_validations`. Un intento concurrente de consumir la misma validación **no** está protegido (no hay UPDATE condicional ni transacción): puede crear más de una frase.
+La cancelación es un estado de la experiencia de usuario; **no** se persiste un estado adicional en `phrase_validations`. Un intento concurrente de consumir la misma validación está protegido por el UPDATE condicional dentro de la transacción: solo una solicitud crea la frase y las demás reciben 409.
 
 ## 14. Registro de decisiones y trade-offs
 

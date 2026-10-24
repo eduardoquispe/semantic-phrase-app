@@ -52,8 +52,8 @@ cuando el código difiere. Ante cualquier discrepancia, manda el código.
    `CONFIRMATION_REQUIRED`).
 8. El backend comprueba la validación (existe, vigente, no consumida, mismo texto
    y modelo), inserta la frase reutilizando el embedding ya calculado (sin volver
-   a llamar al modelo) y después marca la validación como consumida. Son dos
-   escrituras secuenciales, sin transacción.
+   a llamar al modelo) y marca la validación como consumida, todo en una única
+   transacción.
 
 ### Mapa de `docs/`
 

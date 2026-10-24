@@ -9,7 +9,7 @@ referenciarse por su UUID. No hay migración ni secreto de firma requerido.
 El registro (F003) busca por `validationId`, comprueba existencia, estado no
 consumido, vigencia (`now >= expiresAt` implica expiración), texto, modelo/versión y
 confirmación, inserta la frase y después marca la validación como consumida (dos
-escrituras secuenciales, sin transacción).
+escrituras en una única transacción).
 TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
 
 
@@ -63,7 +63,7 @@ No se crea un agregado compuesto `Phrase + PhraseValidation`. Un caso de uso pue
 | Caso de uso | Puerto inbound | Responsabilidad |
 |---|---|---|
 | `ValidatePhraseUseCase` | `ValidatePhrasePort` | Obtener embedding, solicitar la coincidencia (`findValidationMatch`), evaluar el umbral configurable en `PhraseValidationMatch`, almacenar la validación temporal y devolver el UUID persistido. |
-| `CreatePhraseUseCase` | `CreatePhrasePort` | Comprobar, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida, vigencia, texto exacto, modelo/versión (`INCOMPATIBLE_MODEL`) y confirmación; insertar la frase con el embedding previo y marcar la validación como consumida (dos escrituras secuenciales, sin transacción). No vuelve a ejecutar inferencia. |
+| `CreatePhraseUseCase` | `CreatePhrasePort` | Comprobar, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida, vigencia, texto exacto, modelo/versión (`INCOMPATIBLE_MODEL`) y confirmación; insertar la frase con el embedding previo y marcar la validación como consumida (en una única transacción vía `PhraseRegistrationPort`). No vuelve a ejecutar inferencia. |
 | `ListPhrasesUseCase` | `ListPhrasesPort` | Consultar frases registradas a través del repositorio. |
 | `DeletePhraseUseCase` | `DeletePhrasePort` | Eliminar lógicamente una frase activa (soft delete) a través del repositorio. |
 
@@ -91,7 +91,7 @@ No existe un puerto de registro atómico: guardar la frase y consumir la validac
 1. **Validación:** el cliente solicita validar la frase; `ValidatePhraseUseCase` obtiene su embedding, consulta la coincidencia más cercana y aplica el umbral. Guarda una `PhraseValidation` temporal en PostgreSQL y emite una referencia UUID v4 que la identifica.
 2. **Decisión humana:** el frontend muestra el resultado. Ante posible duplicado, el usuario puede confirmar o cancelar; cancelar no llama al guardado.
 3. **Guardado:** `CreatePhraseUseCase` busca por `validationId` y comprueba existencia, estado no consumido, expiración, texto idéntico, modelo/versión y confirmación explícita cuando sea necesaria. Recupera el embedding de la validación: **no hay nueva inferencia**.
-4. **Consumo (sin atomicidad):** el caso de uso inserta la frase (`PhraseRepositoryPort.save`) y después actualiza `consumedAt` (`PhraseValidationRepositoryPort.update`). No hay transacción ni predicado condicional: si la actualización falla, la frase permanece insertada (500 `DATABASE_ERROR`) y un reintento puede duplicarla; dos solicitudes concurrentes con el mismo `validationId` pueden crear dos frases.
+4. **Consumo (atómico):** el caso de uso llama a `PhraseRegistrationPort.register(phrase, validationId)`. El adaptador Drizzle abre una transacción: `UPDATE ... SET consumed_at WHERE id = ? AND consumed_at IS NULL` y `INSERT` de la frase. Si cualquier paso falla se revierte todo (500 `DATABASE_ERROR`, reintento seguro); si el `UPDATE` no afecta filas se lanza `VALIDATION_ALREADY_USED` (409), por lo que dos solicitudes concurrentes con el mismo `validationId` producen una sola frase.
 5. **Abandono:** si el usuario cambia de frase o abandona, la validación temporal expira lógicamente. Los registros expirados pueden permanecer físicamente hasta su limpieza.
 
 ```mermaid
@@ -123,7 +123,7 @@ sequenceDiagram
     end
 ```
 
-**Garantías y límites:** el UUID identifica la fila persistida. El registro comprueba texto, vigencia, estado no consumido, modelo y confirmación, pero guarda y consume en dos escrituras sin transacción. La consulta previa no bloquea cambios concurrentes del corpus.
+**Garantías y límites:** el UUID identifica la fila persistida. El registro comprueba texto, vigencia, estado no consumido, modelo y confirmación, y guarda y consume en una única transacción con consumo condicional. La consulta previa no bloquea cambios concurrentes del corpus.
 
 **Sin workers:** la expiración es lógica (`expires_at`) y no existe limpieza física automática; las filas expiradas o abandonadas se eliminan manualmente.
 
@@ -203,7 +203,7 @@ El directorio `huggin-face/` conserva la errata del código. `PhrasesModule` reg
 | B02-D11 | Embedding y resultado de validación temporal en PostgreSQL, identificados por referencia; expiración lógica y limpieza física posterior. |
 | B02-D13 | Dos puertos de repositorio especializados: frases y validaciones temporales. |
 | B02-D14 | DDD ligero: entidades con comportamiento y VOs mínimos cuando tengan invariantes. |
-| B02-D15 | **Superada:** no existe puerto de registro atómico; el caso de uso inserta la frase y luego consume la validación (dos escrituras). |
+| B02-D15 | **Vigente:** `PhraseRegistrationPort` con adaptador Drizzle transaccional (UPDATE condicional de consumo + INSERT de la frase). |
 | B02-D16 | DTOs HTTP, comandos de aplicación y mappers HTTP/persistencia solo cuando hagan falta. |
 | B02-D17 | Jest para unitarias y E2E (con supertest); sin pruebas de integración contra servicios reales. |
 | B02-D18 | Estructura final aprobada; `Phrase` y `PhraseValidation` como Aggregate Roots independientes, sin base `AggregateRoot` obligatoria. |
@@ -214,4 +214,4 @@ El directorio `huggin-face/` conserva la errata del código. `PhrasesModule` reg
 - API REST, códigos HTTP y errores: `06-api-security.md` y `openapi.yaml`.
 - Persistencia (Drizzle, tablas, índices, búsqueda pgvector): `05-data-architecture.md`.
 - Entorno local, scripts y calidad: `07-infrastructure-quality.md`.
-- Límites conocidos: registro sin transacción (posible doble inserción con el mismo `validationId`), sin limpieza física de validaciones expiradas, sin validación de esquema de la configuración, y listado que lee también la columna `embedding`.
+- Límites conocidos: sin limpieza física de validaciones expiradas, sin validación de esquema de la configuración, y listado que lee también la columna `embedding`.

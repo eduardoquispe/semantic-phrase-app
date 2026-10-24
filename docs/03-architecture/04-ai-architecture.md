@@ -8,7 +8,7 @@ Los JWT anteriores dejan de formar parte del contrato; las filas existentes pued
 referenciarse por su UUID. No hay migración ni secreto de firma requerido.
 El registro (F003) busca por `validationId`, comprueba vigencia (`now >= expiresAt`
 implica expiración), texto, modelo/versión, confirmación y estado no consumido, inserta
-la frase y después marca la validación como consumida (sin transacción).
+la frase y después marca la validación como consumida (en una única transacción).
 TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
 
 
@@ -112,7 +112,7 @@ El adaptador no escoge candidatos, no consulta SQL, no aplica umbrales ni emite 
 | `PhraseRepositoryPort` | `findValidationMatch`: coincidencia textual exacta y, si no hay, Top-1 coseno; sin exponer pgvector al caso de uso |
 | Adaptador de persistencia | Ejecutar la búsqueda exacta Top-1 por distancia coseno y devolver frase y puntuación |
 | `PhraseValidationRepositoryPort` | Conservar la validación temporal, incluido su embedding, según arquitectura backend aprobada |
-| `CreatePhraseUseCase` | Reutilizar el embedding validado, insertar la frase y marcar la validación como consumida (dos escrituras), sin segunda inferencia |
+| `CreatePhraseUseCase` | Reutilizar el embedding validado, insertar la frase y marcar la validación como consumida (una transacción), sin segunda inferencia |
 | Frontend | Mostrar posible coincidencia, puntuación y permitir confirmación/cancelación |
 
 No se creará `AiModule` separado ni `InfrastructureModule` genérico sin necesidad justificada; `PhrasesModule` conserva la composición de dependencias.
@@ -128,7 +128,7 @@ No se creará `AiModule` separado ni `InfrastructureModule` genérico sin necesi
 7. `PhraseValidationMatch` compara la puntuación con el umbral vigente (inclusivo, `>=`) y determina si debe emitirse una alerta de posible duplicado.
 8. La validación temporal conserva el embedding generado y la información necesaria para que el registro posterior no requiera inferencia adicional; el mecanismo de referencia y su persistencia siguen el Bloque 02.
 9. El frontend presenta la coincidencia y su puntaje; cuando corresponde, solicita confirmación humana antes de guardar.
-10. `CreatePhraseUseCase` verifica las condiciones, usa el embedding anterior, inserta la frase y después marca la validación como consumida (dos escrituras, sin transacción).
+10. `CreatePhraseUseCase` verifica las condiciones, usa el embedding anterior, inserta la frase y después marca la validación como consumida (en una única transacción).
 
 **Caso sin frases activas:** no hay coincidencia (`match: null`); resultado funcional válido, sin puntuación. **Caso con frases activas pero ninguna del modelo/versión actual y sin igualdad textual:** el repositorio lanza `IncompatiblePhraseCollectionError` y la API responde 500 `INTERNAL_ERROR`. **Caso con fallo técnico:** se interrumpe la validación y no se devuelve un resultado de “sin duplicados”.
 

@@ -8,8 +8,8 @@ Los JWT anteriores dejan de formar parte del contrato; las filas existentes pued
 referenciarse por su UUID. No hay migración ni secreto de firma requerido.
 El registro (F003) busca por `validationId`, comprueba vigencia (`now >= expiresAt`
 implica expiración), texto, modelo/versión, confirmación y estado no consumido, inserta
-la frase y después marca la validación como consumida (dos escrituras secuenciales,
-**sin transacción**; ver §9.2). TTL configurable (15 minutos por defecto); respuesta y
+la frase y después marca la validación como consumida (en una
+**única transacción**; ver §9.2). TTL configurable (15 minutos por defecto); respuesta y
 fila comparten expiración.
 
 
@@ -23,9 +23,9 @@ fila comparten expiración.
 
 El MVP utiliza **PostgreSQL + extensión pgvector** para almacenar frases, embeddings y validaciones temporales. La API **NestJS/TypeScript** accede a los datos mediante **Drizzle ORM** y dos repositorios de infraestructura (`DrizzlePhraseRepository`, `DrizzlePhraseValidationRepository`) que implementan los puertos del módulo `PhrasesModule`. Se mantienen dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`.
 
-La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones (servicio TEI), se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se devuelve el UUID persistido. `CreatePhraseUseCase` verifica la referencia y la confirmación HITL cuando corresponda, inserta la frase y **después** marca la validación como consumida (dos escrituras, **sin transacción**), sin volver a ejecutar el modelo.
+La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones (servicio TEI), se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se devuelve el UUID persistido. `CreatePhraseUseCase` verifica la referencia y la confirmación HITL cuando corresponda, inserta la frase y **después** marca la validación como consumida (**en una única transacción**), sin volver a ejecutar el modelo.
 
-**Principios de alcance:** simplicidad del MVP; guardado sin transacción (ver §9.2); SQL y Drizzle restringidos a infraestructura; sin HNSW/IVFFlat, workers, colas, tablas de embeddings separadas, repositorios genéricos ni Unit of Work personalizado.
+**Principios de alcance:** simplicidad del MVP; guardado transaccional (ver §9.2); SQL y Drizzle restringidos a infraestructura; sin HNSW/IVFFlat, workers, colas, tablas de embeddings separadas, repositorios genéricos ni Unit of Work personalizado.
 
 ## 2. Fuentes y compatibilidad con bloques anteriores
 
@@ -245,7 +245,7 @@ flowchart TB
 | `DrizzlePhraseRepository` | `phrases` | `save`, `findValidationMatch` (textual → Top-1 → comprobación de compatibilidad), `list` paginado, `softDelete` (`UPDATE ... WHERE status = 1 RETURNING`). |
 | `DrizzlePhraseValidationRepository` | `phrase_validations` | `save`, `update` (p. ej. `consumed_at`), `findById`. |
 
-Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Hay un repositorio por tabla. No existe `PhraseRegistrationPort` ni adaptador transaccional, `UnitOfWork` o coordinador genérico.
+Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Hay un repositorio por tabla y un puerto de registro (`PhraseRegistrationPort`) cuyo adaptador Drizzle abre la transacción de registro; no existe `UnitOfWork` ni coordinador genérico.
 
 `DrizzlePhraseMapper` y `DrizzlePhraseValidationMapper` traducen registros de Drizzle a entidades y viceversa **cuando se necesita reconstruir un Aggregate Root**. Para respuestas de consulta como `{id, text, similarity}` o proyecciones de lista, se pueden devolver resultados tipados de aplicación sin construir entidades completas. No se crea mapper genérico. Las conversiones de fechas, nulabilidad y vector deben ser explícitas cuando cambien de representación.
 
@@ -282,30 +282,31 @@ Una validación está **pendiente y vigente** si `consumed_at IS NULL` y `now < 
 
 `PHRASE_VALIDATION_TTL_MINUTES` (15 por defecto) es configurable. La aplicación calcula `expires_at` al validar (truncado a segundos) y la referencia UUID debe respetar esa misma expiración. No se requiere scheduler para invalidarla: expiración **lógica**.
 
-### 9.2. Registro y consumo (sin transacción)
+### 9.2. Registro y consumo (transaccional)
 
-`CreatePhraseUseCase` lee la validación por `validationId` y comprueba, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida (`VALIDATION_ALREADY_USED`), vigencia (`VALIDATION_EXPIRED`), texto idéntico al original (`PHRASE_MISMATCH`), modelo/versión (`INCOMPATIBLE_MODEL`, 409) y confirmación HITL (`CONFIRMATION_REQUIRED`). Luego:
+`CreatePhraseUseCase` lee la validación por `validationId` y comprueba, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida (`VALIDATION_ALREADY_USED`), vigencia (`VALIDATION_EXPIRED`), texto idéntico al original (`PHRASE_MISMATCH`), modelo/versión (`INCOMPATIBLE_MODEL`, 409) y confirmación HITL (`CONFIRMATION_REQUIRED`). Luego llama a `PhraseRegistrationPort.register(phrase, validationId)`; `DrizzlePhraseRegistrationRepository` ejecuta en una transacción:
 
-1. `PhraseRepositoryPort.save(phrase)`: `INSERT INTO phrases` con texto, normalizado, embedding y modelo copiados de la validación (sin segunda inferencia).
-2. `PhraseValidationRepositoryPort.update(id, { consumedAt })`: `UPDATE phrase_validations SET consumed_at = ...` **sin** predicado `consumed_at IS NULL` ni de expiración, y sin `RETURNING`.
+1. `UPDATE phrase_validations SET consumed_at = ... WHERE id = ? AND consumed_at IS NULL RETURNING id`. Si no devuelve filas: rollback y `VALIDATION_ALREADY_USED`.
+2. `INSERT INTO phrases` con texto, normalizado, embedding y modelo copiados de la validación (sin segunda inferencia).
 
 ```mermaid
 sequenceDiagram
     participant UC as CreatePhraseUseCase
     participant VR as PhraseValidationRepositoryPort
-    participant PR as PhraseRepositoryPort
+    participant RG as PhraseRegistrationPort
     participant DB as PostgreSQL
     UC->>VR: findById(validationId)
     VR->>DB: SELECT
     UC->>UC: Comprobar consumo, vigencia, texto, modelo, confirmación
-    UC->>PR: save(phrase)
-    PR->>DB: INSERT INTO phrases
-    UC->>VR: update(id, consumedAt)
-    VR->>DB: UPDATE phrase_validations
+    UC->>RG: register(phrase, validationId)
+    RG->>DB: BEGIN
+    RG->>DB: UPDATE phrase_validations ... WHERE consumed_at IS NULL
+    RG->>DB: INSERT INTO phrases
+    RG->>DB: COMMIT
     UC-->>UC: Frase registrada
 ```
 
-**Consecuencias asumidas:** no hay transacción ni compensación. Si falla el `INSERT`, no se intenta el consumo. Si falla el `UPDATE`, el error se propaga (500 `DATABASE_ERROR`) y la frase **permanece insertada**; un reintento puede duplicarla. Dos solicitudes concurrentes con la misma validación pueden crear dos frases. Dos validaciones distintas pueden registrar frases semejantes (coherente con HITL).
+**Garantías:** todo o nada. Si falla el `UPDATE` o el `INSERT` se revierte la transacción (500 `DATABASE_ERROR`) y el reintento es seguro. Dos solicitudes concurrentes con la misma validación producen una sola frase; la otra recibe 409 `VALIDATION_ALREADY_USED`. Dos validaciones distintas pueden registrar frases semejantes (coherente con HITL).
 
 ### 9.3. Retención
 
@@ -353,7 +354,7 @@ Por B05-D15, se hace **traducción selectiva** en infraestructura, sin jerarquí
 | Mappers | Reconstrucción de entidades, `NULL`, fechas y metadatos. |
 | Lógica aislable de adaptadores | Manejo de resultado sin filas y clasificación selectiva de errores, sin pretender validar SQL real mediante mocks. |
 
-**Riesgo aceptado:** las pruebas unitarias no demuestran que el DDL, pgvector o el plan Top-1 operen correctamente sobre PostgreSQL. Antes de considerar terminado el reto se requiere una **comprobación manual real y no destructiva** de: extensión activa, migraciones, guardado y lectura de vector 384, recuperación coseno conocida, prioridad textual, ausencia de candidata, y el comportamiento del consumo (hoy sin transacción). No se confunde esta comprobación con cobertura automatizada de integración. El umbral se calibró con vectores Xenova ONNX `q8` y hoy se aplica a vectores TEI float32 sin recalibración registrada: es un **riesgo de integración del Bloque 04**, no verificado aquí.
+**Riesgo aceptado:** las pruebas unitarias no demuestran que el DDL, pgvector o el plan Top-1 operen correctamente sobre PostgreSQL. Antes de considerar terminado el reto se requiere una **comprobación manual real y no destructiva** de: extensión activa, migraciones, guardado y lectura de vector 384, recuperación coseno conocida, prioridad textual, ausencia de candidata, y el comportamiento transaccional del registro (rollback y doble POST simultáneo). No se confunde esta comprobación con cobertura automatizada de integración. El umbral se calibró con vectores Xenova ONNX `q8` y hoy se aplica a vectores TEI float32 sin recalibración registrada: es un **riesgo de integración del Bloque 04**, no verificado aquí.
 
 ## 13. Diagramas de secuencia de validación
 
@@ -396,7 +397,7 @@ sequenceDiagram
 | B05-D07 | Sin FK entre tablas de agregados | Limpieza independiente; menor trazabilidad histórica. |
 | B05-D08 | `VECTOR(384)` + `model_id` y `model_version` | Garantiza dimensión, no equivalencia semántica. |
 | B05-D09 | Top-1 exacto; índices convencionales; sin ANN | Recuperación exacta; coste crece con volumen. |
-| B05-D10 | **Revisada:** `INSERT` de la frase y después `UPDATE` de `consumed_at`, sin transacción | Simple; no es atómico ni impide doble consumo concurrente. |
+| B05-D10 | **Revisada:** transacción con `UPDATE` condicional de `consumed_at` e `INSERT` de la frase (`PhraseRegistrationPort`) | Atómico e impide el doble consumo concurrente. |
 | B05-D11 | Limpieza manual | Sin scheduler; requiere mantenimiento eventual. |
 | B05-D12 | **Revisada:** dos repositorios (uno por tabla), sin adaptador de registro | Separación simple; el registro coordina ambos desde el caso de uso. |
 | B05-D13 | Mappers por agregado solo cuando aporten valor | Sin mapper genérico; algo de código específico. |
@@ -415,7 +416,7 @@ sequenceDiagram
 
 Pendientes reales: atomicidad del registro, exclusión del `embedding` en el listado, retención/limpieza de `phrase_validations`, recalibración del umbral con vectores TEI y comprobaciones manuales sobre PostgreSQL real.
 
-**Criterio de aceptación:** dos tablas, búsqueda Top-1 exacta, almacenamiento 384d/versionado, flujo HITL y dos repositorios; sin índice ANN. El registro **no** es transaccional.
+**Criterio de aceptación:** dos tablas, búsqueda Top-1 exacta, almacenamiento 384d/versionado, flujo HITL y dos repositorios; sin índice ANN. El registro es transaccional.
 
 ## Referencias técnicas
 

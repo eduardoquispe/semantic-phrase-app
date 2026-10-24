@@ -71,7 +71,7 @@ Flujo funcional de alto nivel:
 4. El backend consulta las frases activas: primero coincidencia textual exacta y, si no existe, la más cercana por coseno (Top-1) con el mismo modelo y versión.
 5. La API devuelve el resultado y la puntuación de similitud.
 6. Si corresponde, la interfaz pide confirmación humana antes de guardar; el usuario puede confirmar o cancelar.
-7. El guardado se ejecuta con `POST /api/v1/phrases` y el `validationId`: el backend inserta la frase y después marca la validación como consumida (dos escrituras secuenciales, sin transacción).
+7. El guardado se ejecuta con `POST /api/v1/phrases` y el `validationId`: el backend inserta la frase y después marca la validación como consumida (en una única transacción).
 
 **Reglas de dependencia:** el dominio y los casos de uso no deben importar LangChain, clientes de base de datos ni detalles del transporte HTTP. Los adaptadores dependen de los contratos apropiados, no al revés. El navegador nunca accede directamente a PostgreSQL ni al modelo.
 

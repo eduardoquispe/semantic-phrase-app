@@ -44,7 +44,7 @@ Proporcionar una aplicación web simple que use IA para detectar posibles duplic
 | SC-005 | La validación responde en hasta 5 segundos en condiciones normales | Medición de rendimiento | CONFIRMED | DEC-011 |
 | SC-006 | Los fallos de IA o persistencia no producen guardados parciales y no eliminan el texto ingresado | Pruebas de error | CONFIRMED | DEC-002 |
 
-> **Nota (código):** SC-004 y BR-014 (más abajo) no se cumplen: la tabla `phrases` no guarda decisión humana, estado (`SIN_FRASES_PREVIAS`/`SIN_COINCIDENCIA`) ni metadata de validación; solo `phrase_validations` conserva la validación (consumida o no) y no hay asociación obligatoria con la frase. SC-006 se cumple solo en parte: no hay transacción (ver NFR-003).
+> **Nota (código):** SC-004 y BR-014 (más abajo) no se cumplen: la tabla `phrases` no guarda decisión humana, estado (`SIN_FRASES_PREVIAS`/`SIN_COINCIDENCIA`) ni metadata de validación; solo `phrase_validations` conserva la validación (consumida o no) y no hay asociación obligatoria con la frase. SC-006 se cumple: el registro y el consumo ocurren en una única transacción (ver NFR-003).
 
 
 ---
@@ -303,7 +303,7 @@ Esta descripción no constituye un contrato de API ni define el esquema SQL.
 | NFR-013 | Observabilidad UX | Durante una validación no se deben permitir solicitudes duplicadas desde la misma interacción | CONFIRMED | DEC-011 |
 | NFR-014 | Compatibilidad técnica | La implementación debe respetar Node.js con JavaScript o TypeScript, frontend React o Vue y PostgreSQL o MySQL | CONFIRMED | Reto: requisitos técnicos mínimos |
 
-> **Nota (código):** el registro no es transaccional: `POST /phrases` inserta la frase y después marca la validación como consumida (dos escrituras). Si falla el consumo, la frase queda guardada y un reintento puede duplicarla; solicitudes concurrentes con la misma validación también pueden crear varias frases (aplica a EC-012 y SC-006).
+> **Nota (código):** el registro es transaccional: `POST /phrases` consume la validación (UPDATE condicional) e inserta la frase en una única transacción. Si algo falla no se guarda nada y el reintento es seguro; solicitudes concurrentes con la misma validación producen una frase y un 409 `VALIDATION_ALREADY_USED` (aplica a EC-012 y SC-006).
 
 
 El tiempo máximo de espera técnico antes de declarar timeout se definirá en arquitectura.
@@ -440,7 +440,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 
 > **Nota (código):** resuelto en código. Empates vectoriales: `ORDER BY distancia ASC, id ASC`; coincidencias textuales: `created_at DESC, id DESC`; siempre una sola candidata.
 
-> **Nota (código):** resuelto en código: no hay control de concurrencia (ni transacción ni bloqueo). Dos guardados simultáneos pueden insertar ambas frases; el flujo HITL no se omite porque cada guardado requiere su propia validación.
+> **Nota (código):** resuelto en código: el consumo condicional dentro de la transacción de registro impide que dos guardados simultáneos con la misma validación inserten ambas frases (el segundo recibe 409); el flujo HITL no se omite porque cada guardado requiere su propia validación.
 
 
 ---
