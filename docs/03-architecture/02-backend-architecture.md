@@ -63,6 +63,7 @@ No se crea un agregado compuesto `Phrase + PhraseValidation`. Un caso de uso pue
 | `ValidatePhraseUseCase` | `ValidatePhrasePort` | Validar reglas de entrada de negocio, obtener embedding, solicitar coincidencia más cercana, evaluar umbral configurable, almacenar validación temporal y devolver el UUID persistido. |
 | `CreatePhraseUseCase` | `CreatePhrasePort` | Verificar referencia, identidad/vigencia/estado de validación y confirmación cuando aplique; registrar frase usando embedding previo y consumir la validación atómicamente. No vuelve a ejecutar inferencia. |
 | `ListPhrasesUseCase` | `ListPhrasesPort` | Consultar frases registradas a través del repositorio. |
+| `DeletePhraseUseCase` | `DeletePhrasePort` | Eliminar lógicamente una frase activa (soft delete) a través del repositorio. |
 
 El contrato de salida de validación informará si hay posible duplicado, coincidencia más cercana y puntaje. La precisión de DTOs, reglas de texto y contrato REST pertenece a la especificación de API.
 

@@ -34,10 +34,10 @@ La aplicación permite listar frases, validar una frase candidata frente a frase
 ## 2. Principios y convenciones REST
 
 - Base local: `http://localhost:3000/api/v1`, versión mediante URI. `v1` versiona el **contrato HTTP**, no el modelo de embeddings.
-- Recursos `phrases` y `phrase-validations`, en plural y kebab-case. Solo se publican tres operaciones. No se crean endpoints CRUD artificiales para las validaciones temporales.
-- `GET` consulta, `POST` crea. El cliente manda y recibe JSON UTF-8; los fallos usan `application/problem+json`.
+- Recursos `phrases` y `phrase-validations`, en plural y kebab-case. Solo se publican cuatro operaciones. No se crean endpoints CRUD artificiales para las validaciones temporales.
+- `GET` consulta, `POST` crea, `DELETE` elimina lógicamente una frase. El cliente manda y recibe JSON UTF-8; los fallos usan `application/problem+json`.
 - Respuesta exitosa `{ "data": ... }`, más `meta` exclusivamente donde corresponde a listados paginados. No agregar `success`, `message` o `timestamp` redundantes.
-- `201 Created` en ambas operaciones POST; `200 OK` para listado. Para MVP no es necesario publicar URI individual ni cabecera `Location` para validaciones temporales sin endpoint GET asociado.
+- `201 Created` en ambas operaciones POST; `200 OK` para listado; `204 No Content` para eliminación. Para MVP no es necesario publicar URI individual ni cabecera `Location` para validaciones temporales sin endpoint GET asociado.
 - No autenticación de usuarios. El UUID de validación no es credencial de identidad; no incluir un requisito `securitySchemes` para estos endpoints.
 - Los contratos de petición y respuesta se definen en **`openapi.yaml` como única fuente de verdad**. Durante SDD, los controllers/DTOs implementarán dicho YAML y se verificará manualmente su correspondencia (sin generación de SDKs o de tipos).
 
@@ -48,8 +48,9 @@ La aplicación permite listar frases, validar una frase candidata frente a frase
 | `GET` | `/api/v1/phrases` | `ListPhrasesUseCase` | 200 | Consultar frases con paginación |
 | `POST` | `/api/v1/phrase-validations` | `ValidatePhraseUseCase` | 201 | Crear validación temporal, generar embedding, resolver coincidencia y devolver validationId |
 | `POST` | `/api/v1/phrases` | `CreatePhraseUseCase` | 201 | Comprobar validación y confirmación; registrar y consumir de forma atómica |
+| `DELETE` | `/api/v1/phrases/{id}` | `DeletePhraseUseCase` | 204 | Eliminar lógicamente una frase activa (soft delete) |
 
-No se implementan: login, roles, renovación de sesión, endpoint de confirmación adicional, eliminación, selección de modelos ni endpoints administrativos.
+No se implementan: login, roles, renovación de sesión, endpoint de confirmación adicional, restauración de frases eliminadas, selección de modelos ni endpoints administrativos.
 
 ## 4. Contratos Request/Response
 
@@ -123,7 +124,11 @@ Parámetros `page` entero ≥ 1 (predeterminado 1), `limit` entero entre 1 y 100
 }
 ```
 
-Se omiten `embedding`, `normalized_text`, metadatos de modelo y validaciones temporales. `LIMIT/OFFSET` no garantiza páginas inmutables ante inserciones concurrentes; es una concesión consciente del MVP.
+Solo se listan frases activas (`status = 1`) y `total` las cuenta únicamente a ellas. Se omiten `embedding`, `normalized_text`, metadatos de modelo y validaciones temporales. `LIMIT/OFFSET` no garantiza páginas inmutables ante inserciones concurrentes; es una concesión consciente del MVP.
+
+### 4.4 `DELETE /phrases/{id}`
+
+Parámetro de ruta `id`: UUID de la frase. Sin cuerpo de petición ni de respuesta. Marca `status = 2` y `deleted_at` con la hora actual; no borra físicamente la fila. Éxito: `204 No Content`. Frase inexistente o ya eliminada: `404 PHRASE_NOT_FOUND` (no idempotente). `id` con formato no UUID: `400 VALIDATION_ERROR`. Fallo de base de datos: `500 DATABASE_ERROR`. La frase eliminada deja de aparecer en el listado y en validaciones futuras; las validaciones previas que la citan no se modifican.
 
 ## 5. Swagger/OpenAPI — estrategia contract-first
 
@@ -161,6 +166,7 @@ Las respuestas fallidas utilizan `application/problem+json` y un subconjunto de 
 | 400 | `VALIDATION_ERROR` | DTO o query inválidos; `errors` por campo cuando corresponda |
 | 400 | `INVALID_VALIDATION_ID` | validationId ausente, UUID no v4 o referencia inexistente |
 | 400 | `PHRASE_MISMATCH` | Texto no corresponde a la validación almacenada |
+| 404 | `PHRASE_NOT_FOUND` | Frase inexistente o ya eliminada lógicamente |
 | 409 | `VALIDATION_EXPIRED` | Validación vencida; React conserva texto y ofrece validar nuevamente |
 | 409 | `VALIDATION_ALREADY_USED` | Validación consumida (incluye consumo concurrente perdedor) |
 | 409 | `CONFIRMATION_REQUIRED` | Falta confirmación explícita para una coincidencia |

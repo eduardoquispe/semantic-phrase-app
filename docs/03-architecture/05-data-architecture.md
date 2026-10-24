@@ -63,6 +63,8 @@ erDiagram
         varchar model_id
         varchar model_version
         timestamptz created_at
+        smallint status "1=activa, 2=eliminada"
+        timestamptz deleted_at "nullable; fecha de eliminación"
     }
     phrase_validations {
         uuid id PK
@@ -93,6 +95,10 @@ erDiagram
 | `model_id` | `VARCHAR(255)` | `NOT NULL` | Identificador del modelo. |
 | `model_version` | `VARCHAR(150)` | `NOT NULL` | Identidad del espacio vectorial efectivo. |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL`; valor inicial de tiempo | Ordenación y auditoría mínima. |
+| `status` | `SMALLINT` | `NOT NULL`; `DEFAULT 1`; `CHECK (status IN (1, 2))` | Estado de la frase: `1` = activa, `2` = eliminada (eliminación lógica), irreversible desde el MVP. |
+| `deleted_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Fecha de eliminación; no nulo solo si `status = 2`. |
+
+Una frase está **activa** si `status = 1`. Listado, coincidencia textual, Top-1 vectorial y conteo paginado consideran solo frases activas. La eliminación es un `UPDATE ... SET status = 2, deleted_at = NOW() WHERE id = :id AND status = 1`; no hay `DELETE` físico ni restauración.
 
 No habrá `UNIQUE` en `text` o `normalized_text`: HITL puede permitir que una persona confirme un registro pese a una coincidencia. Reglas de longitud, texto vacío y detalles Unicode se aplican según contrato funcional/aplicación, sin agregar restricciones SQL no aprobadas.
 
@@ -115,7 +121,7 @@ No habrá `UNIQUE` en `text` o `normalized_text`: HITL puede permitir que una pe
 
 **Aclaración de `similarity_score`:** para una coincidencia textual exacta prioritaria **no se inventará** una puntuación de coseno. Puede haber `matched_phrase_id` informado y `similarity_score = NULL` cuando la coincidencia es textual. Por B05-D21 no se crea un `CHECK` que exija simultaneidad de ambos campos. El resultado de aplicación distingue `textual_exact`, `vector` y `none` conceptualmente; la representación exacta en HTTP corresponde al bloque API. No se añade una nueva columna para ese discriminador sin aprobación: en esta versión, cuando `matched_phrase_id` exista y `similarity_score` sea `NULL`, se interpreta como coincidencia textual; ambos `NULL` significan ausencia de candidata. La lógica de aplicación verifica la coherencia.
 
-**Advertencia de consistencia temporal:** si una frase coincidente se borra más adelante, `matched_phrase_id` puede quedar como referencia informativa no resoluble. No se ha aprobado eliminar frases ni preservar un historial de coincidencias más amplio.
+**Advertencia de consistencia temporal:** las frases se eliminan lógicamente (`phrases.status`), por lo que `matched_phrase_id` sigue resolviendo a una fila existente aunque la frase ya no esté activa. La evidencia histórica de validaciones previas no se altera.
 
 ### 4.3. Reglas de normalización textual
 
@@ -164,6 +170,7 @@ Para múltiples coincidencias textuales iguales se elegirá una sola de forma es
 SELECT id, text
 FROM phrases
 WHERE normalized_text = :normalized_text
+  AND status = 1
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 ```
@@ -175,7 +182,8 @@ SELECT id,
        text,
        1 - (embedding <=> :query_vector::vector) AS similarity
 FROM phrases
-WHERE model_version = :active_model_version
+WHERE status = 1
+  AND model_version = :active_model_version
   AND model_id = :active_model_id
 ORDER BY embedding <=> :query_vector::vector ASC,
          id ASC
@@ -191,9 +199,12 @@ El filtro de versión y modelo evita comparar espacios incompatibles, sin que es
 ```sql
 SELECT id, text, created_at
 FROM phrases
+WHERE status = 1
 ORDER BY created_at DESC, id DESC
 LIMIT :limit OFFSET :offset;
 ```
+
+El `total` de la paginación cuenta solo frases con `status = 1`.
 
 Tamaño inicial **20**; `LIMIT/OFFSET`, con valores validados/no negativos. No seleccionar `embedding` en el listado. La respuesta paginada no debe asumir estabilidad absoluta entre páginas cuando hay inserciones concurrentes (trade-off aceptado por el MVP).
 
@@ -205,6 +216,7 @@ Tamaño inicial **20**; `LIMIT/OFFSET`, con valores validados/no negativos. No s
 | `phrases` | B-tree sobre `normalized_text` | Igualdad textual | Aprobado. |
 | `phrases` | B-tree sobre `model_version` (o combinado con `model_id`) | Filtrado eventual | **Condicional** a selectividad/planes; no acelerará por sí solo la distancia coseno. |
 | `phrases` | B-tree compuesto `(created_at DESC, id DESC)` | Listado/paginación | Candidato sencillo; medir antes de introducir un índice redundante. |
+| `phrases` | B-tree sobre `status` (o parcial `WHERE status = 1`) | Filtrar frases activas | Opcional; medir antes de añadirlo. |
 | `phrase_validations` | PK B-tree sobre `id` | Lookup y consumo condicional | Obligatorio. |
 | `phrase_validations` | B-tree sobre `expires_at` | Limpieza manual futura | Opcional, si el volumen lo justifica. |
 

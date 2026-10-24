@@ -69,7 +69,7 @@ El MVP utiliza una lista compartida. No existen cuentas, roles, propiedad indivi
 - Guardado mediante una acción explícita después de una validación vigente.
 - Advertencia y decisión humana cuando existe coincidencia textual o semántica.
 - Listado compartido ordenado desde la frase más reciente.
-- Eliminación permanente con confirmación.
+- Eliminación lógica (soft delete) con confirmación.
 - Persistencia SQL de frases y metadata de validación.
 - API REST documentada, respuestas consistentes y manejo claro de errores.
 - Indicadores de carga, éxito, advertencia y error.
@@ -125,7 +125,7 @@ Ninguna mejora opcional forma parte de los criterios de aprobación del MVP.
 | FR-015 | Si falla la validación semántica, el sistema debe conservar el texto, impedir el guardado y permitir reintentar | Must | CONFIRMED | DEC-002 |
 | FR-016 | El sistema debe listar las frases activas desde la más reciente y mostrar texto, fecha de creación y acción Eliminar | Must | CONFIRMED | DEC-013 |
 | FR-017 | El listado debe actualizarse después de guardar o eliminar una frase | Must | CONFIRMED | DEC-013 |
-| FR-018 | La eliminación debe solicitar confirmación, retirar definitivamente la frase activa y excluirla de comparaciones futuras | Must | CONFIRMED | DEC-006, DEC-014 |
+| FR-018 | La eliminación debe solicitar confirmación, marcar la frase como eliminada lógicamente (sin borrado físico), retirarla del listado y excluirla de comparaciones futuras | Must | CONFIRMED | DEC-006, DEC-014 |
 | FR-019 | La eliminación no debe destruir la evidencia histórica almacenada por validaciones anteriores de otras frases | Must | CONFIRMED | DEC-014 |
 | FR-020 | La aplicación debe iniciar sin frases y ofrecer datos de ejemplo opcionales mediante instrucciones separadas | Should | CONFIRMED | DEC-015 |
 
@@ -214,7 +214,7 @@ La interfaz no muestra la frase más cercana ni su puntaje cuando el umbral no h
 | BR-013 | Una entrada válida contiene de 1 a 280 caracteres después del recorte externo y al menos una letra | CONFIRMED | DEC-012 |
 | BR-014 | Todas las frases guardadas deben conservar la metadata de la validación que autorizó su persistencia | CONFIRMED | DEC-008 |
 | BR-015 | Las cancelaciones y los fallos de validación no generan registros persistidos | CONFIRMED | DEC-008 |
-| BR-016 | Una frase eliminada no puede restaurarse desde el MVP ni participar en nuevas comparaciones | CONFIRMED | DEC-014 |
+| BR-016 | Una frase eliminada lógicamente se conserva en la base de datos con su fecha de eliminación, pero no puede restaurarse desde el MVP, ni aparecer en el listado, ni participar en nuevas comparaciones | CONFIRMED | DEC-014 |
 | BR-017 | La lista es compartida y cualquier usuario puede eliminar cualquier frase con confirmación | CONFIRMED | DEC-009 |
 
 ---
@@ -424,7 +424,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | DEC-003 | Tratar coincidencias textuales y semánticas mediante advertencia y confirmación; calcular la textual con lógica determinista | Mantiene un flujo HITL uniforme y distingue los métodos | CONFIRMED |
 | DEC-004 | Calibrar el umbral después de seleccionar y evaluar el modelo | Los puntajes no son directamente equivalentes entre modelos | CONFIRMED |
 | DEC-005 | Excluir autenticación del MVP y usar una lista compartida | Prioriza el objetivo principal del reto | CONFIRMED |
-| DEC-006 | Incluir eliminación permanente con confirmación y excluir edición | Aporta gestión básica con menor complejidad que editar y revalidar | CONFIRMED |
+| DEC-006 | Incluir eliminación lógica (soft delete) con confirmación y excluir edición y restauración | Aporta gestión básica con menor complejidad que editar y revalidar; conserva el dato para trazabilidad. Reemplaza la eliminación permanente original | CONFIRMED |
 | DEC-007 | Limitar el MVP a español sin detección automática de idioma | Acota la evaluación y evita introducir otro clasificador | CONFIRMED |
 | DEC-008 | Persistir metadata para toda frase guardada y no registrar intentos cancelados o fallidos | Cumple la trazabilidad exigida sin crear auditoría innecesaria | CONFIRMED |
 | DEC-009 | Permitir que cualquier usuario elimine cualquier frase en el entorno demostrativo | No existe identidad ni propiedad en este MVP | CONFIRMED |
