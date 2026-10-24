@@ -1,5 +1,7 @@
 # Product Brief — Semantic Phrase Validator
 
+> **Documento histórico de decisión; el código implementado difiere en los puntos marcados con "Nota (código)". Ante discrepancia manda el código.**
+
 | Campo | Valor |
 |---|---|
 | Proyecto | Semantic Phrase Validator |
@@ -41,6 +43,9 @@ Proporcionar una aplicación web simple que use IA para detectar posibles duplic
 | SC-004 | Toda frase guardada conserva la metadata de la validación que autorizó su persistencia | Pruebas de integración y consulta SQL | CONFIRMED | Reto: Alcance obligatorio; DEC-008 |
 | SC-005 | La validación responde en hasta 5 segundos en condiciones normales | Medición de rendimiento | CONFIRMED | DEC-011 |
 | SC-006 | Los fallos de IA o persistencia no producen guardados parciales y no eliminan el texto ingresado | Pruebas de error | CONFIRMED | DEC-002 |
+
+> **Nota (código):** SC-004 y BR-014 (más abajo) no se cumplen: la tabla `phrases` no guarda decisión humana, estado (`SIN_FRASES_PREVIAS`/`SIN_COINCIDENCIA`) ni metadata de validación; solo `phrase_validations` conserva la validación (consumida o no) y no hay asociación obligatoria con la frase. SC-006 se cumple solo en parte: no hay transacción (ver NFR-003).
+
 
 ---
 
@@ -109,7 +114,7 @@ Ninguna mejora opcional forma parte de los criterios de aprobación del MVP.
 | ID | Requisito | Prioridad | Estado | Trazabilidad |
 |---|---|---|---|---|
 | FR-001 | El sistema debe permitir ingresar una frase de una sola línea en español | Must | CONFIRMED | Reto: Detalle del reto; DEC-007 |
-| FR-002 | El sistema debe rechazar frases vacías, formadas solo por espacios, sin letras o mayores de 280 caracteres después de eliminar espacios externos | Must | CONFIRMED | DEC-012 |
+| FR-002 | El sistema debe rechazar frases vacías, formadas solo por espacios, con menos de 3 letras, con emojis o mayores de 280 caracteres después de eliminar espacios externos | Must | CONFIRMED | DEC-012 |
 | FR-003 | El usuario debe disponer de botones separados **Validar** y **Guardar**; el primero comprueba similitud sin persistir y el segundo guarda después de validar | Must | CONFIRMED | Reto: validación antes de guardar; DEC-018 |
 | FR-004 | El sistema debe mostrar un estado de validación en curso e impedir envíos duplicados mientras procesa la solicitud | Must | CONFIRMED | DEC-011 |
 | FR-005 | El sistema debe detectar coincidencias textuales después de normalizar mayúsculas, minúsculas y espacios | Must | CONFIRMED | DEC-003 |
@@ -129,6 +134,15 @@ Ninguna mejora opcional forma parte de los criterios de aprobación del MVP.
 | FR-019 | La eliminación no debe destruir la evidencia histórica almacenada por validaciones anteriores de otras frases | Must | CONFIRMED | DEC-014 |
 | FR-020 | La aplicación debe iniciar sin frases y ofrecer datos de ejemplo opcionales mediante instrucciones separadas | Should | CONFIRMED | DEC-015 |
 
+> **Nota (código):** el código exige texto no vacío tras recortar, de hasta 280 puntos de código del original (espacios externos incluidos), con al menos 3 letras, sin emojis y sin caracteres de control (Cc). Se permite la puntuación (`¿ ? ! : ( )`…). Es la misma regla en el formulario, el DTO y el dominio (aplica también a BR-013, EC-002 y DEC-012).
+
+> **Nota (código):** validar sí persiste: cada `POST /phrase-validations` exitoso guarda una fila temporal en `phrase_validations` (UUID `validationId`, embedding, expira a los 15 min por defecto, limpieza manual). Lo que no se persiste es la frase en `phrases`. Esto matiza FR-013, BR-015, EC-006 y AC-017: cancelar no crea ninguna frase, pero la fila de validación permanece hasta limpiarla.
+
+> **Nota (código):** en una coincidencia textual el API devuelve `similarityScore: null` en lugar de un puntaje de 100 % (aplica a BR-007 y AC-004); el tipo se distingue con `match.type = "textual_exact"` frente a `"vector"`.
+
+> **Nota (código):** no se registra la decisión humana: el cliente envía `confirmed: true` y el backend solo lo comprueba para permitir el guardado (409 `CONFIRMATION_REQUIRED` si falta); no se persiste (aplica a AC-006 y DEC-008).
+
+
 ---
 
 ## 5. User Flows
@@ -144,6 +158,8 @@ Ninguna mejora opcional forma parte de los criterios de aprobación del MVP.
 4. El usuario pulsa **Guardar**.
 5. El sistema persiste la frase con estado `SIN_FRASES_PREVIAS` y su metadata de validación.
 6. Muestra confirmación de éxito y actualiza el listado.
+
+> **Nota (código):** el estado `SIN_FRASES_PREVIAS` no existe en el código ni se persiste; la frase se guarda sin estado de validación (igual para `SIN_COINCIDENCIA` en UF-002, AC-002 y AC-003).
 
 ### UF-002 — Guardar una frase sin coincidencia
 
@@ -211,11 +227,14 @@ La interfaz no muestra la frase más cercana ni su puntaje cuando el umbral no h
 | BR-010 | El umbral semántico debe ser configurable, pero no editable desde la interfaz del MVP | CONFIRMED | Reto: umbral configurable; DEC-004 |
 | BR-011 | El valor inicial del umbral se define después de seleccionar y evaluar el modelo | CONFIRMED | DEC-004 |
 | BR-012 | Solo se garantizan resultados semánticos para frases en español; no habrá detección automática de idioma | CONFIRMED | DEC-007 |
-| BR-013 | Una entrada válida contiene de 1 a 280 caracteres después del recorte externo y al menos una letra | CONFIRMED | DEC-012 |
+| BR-013 | Una entrada válida contiene hasta 280 caracteres después del recorte externo, al menos 3 letras y ningún emoji | CONFIRMED | DEC-012 |
 | BR-014 | Todas las frases guardadas deben conservar la metadata de la validación que autorizó su persistencia | CONFIRMED | DEC-008 |
 | BR-015 | Las cancelaciones y los fallos de validación no generan registros persistidos | CONFIRMED | DEC-008 |
 | BR-016 | Una frase eliminada lógicamente se conserva en la base de datos con su fecha de eliminación, pero no puede restaurarse desde el MVP, ni aparecer en el listado, ni participar en nuevas comparaciones | CONFIRMED | DEC-014 |
 | BR-017 | La lista es compartida y cualquier usuario puede eliminar cualquier frase con confirmación | CONFIRMED | DEC-009 |
+
+> **Nota (código):** ver la nota de FR-010: `similarityScore` es `null` para `textual_exact`.
+
 
 ---
 
@@ -255,6 +274,9 @@ Esta descripción no constituye un contrato de API ni define el esquema SQL.
 - Cada caso incluye una frase nueva, frases activas almacenadas y la decisión esperada; las etiquetas humanas actúan como referencia de verdad.
 - Los casos se utilizan para evaluación y calibración, no para entrenamiento.
 - Se elige MiniLM para implementar el MVP con inferencia local en Node.js: entre los modelos probados en el flujo completo obtuvo 12/20 decisiones correctas frente a 10/20 de BGE-M3, con menor tiempo y consumo de recursos. Es una elección práctica para este reto técnico, no una garantía de calidad general.
+
+> **Nota (código):** ver la nota de Q-001: la inferencia corre en el servicio TEI de `compose.yaml`, no dentro del proceso Node.js del backend.
+
 - El 75 % fue una meta interna de los experimentos, no un requisito del reto ni una condición definitiva para entregar el MVP. Los resultados y sus errores se mantienen visibles; no se presentan los 12/20 como cumplimiento de esa meta. Se prioriza completar el flujo funcional con el modelo disponible sin costo de API y ejecución local (DEC-022).
 - En una evaluación nueva, `similar` significa que conviene advertir sobre un **posible** duplicado para revisión humana. Si se conserva la misma acción y el mismo asunto, un cambio de nombre, cantidad, fecha, hora o lugar puede seguir siendo `similar`; el usuario decide si guarda ambas frases. Las acciones opuestas, negaciones que invierten el hecho y solicitudes de intención distinta son `not_similar` (DEC-020).
 - Una nueva evaluación independiente será necesaria si más adelante se afirma una mejora de calidad o se cambia el umbral; no bloquea la implementación del MVP. No se reetiquetan los holdouts ya evaluados para reclamar la meta anterior.
@@ -281,6 +303,9 @@ Esta descripción no constituye un contrato de API ni define el esquema SQL.
 | NFR-013 | Observabilidad UX | Durante una validación no se deben permitir solicitudes duplicadas desde la misma interacción | CONFIRMED | DEC-011 |
 | NFR-014 | Compatibilidad técnica | La implementación debe respetar Node.js con JavaScript o TypeScript, frontend React o Vue y PostgreSQL o MySQL | CONFIRMED | Reto: requisitos técnicos mínimos |
 
+> **Nota (código):** el registro no es transaccional: `POST /phrases` inserta la frase y después marca la validación como consumida (dos escrituras). Si falla el consumo, la frase queda guardada y un reintento puede duplicarla; solicitudes concurrentes con la misma validación también pueden crear varias frases (aplica a EC-012 y SC-006).
+
+
 El tiempo máximo de espera técnico antes de declarar timeout se definirá en arquitectura.
 
 ---
@@ -289,7 +314,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 
 ### AC-001 — Validación de entrada
 
-**Given** que el usuario ingresa una cadena vacía, solo espacios, una entrada sin letras, varias líneas o más de 280 caracteres,  
+**Given** que el usuario ingresa una cadena vacía, solo espacios, una entrada con menos de 3 letras o con emojis, varias líneas o más de 280 caracteres,  
 **When** pulsa **Validar**,\
 **Then** el sistema rechaza la entrada, explica la causa y no inicia la validación semántica ni persiste datos.
 
@@ -396,7 +421,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | ID | Escenario | Comportamiento esperado | Estado |
 |---|---|---|---|
 | EC-001 | Entrada vacía o solo espacios | Rechazar sin consultar el modelo | CONFIRMED |
-| EC-002 | Entrada sin letras, como `!!!` o solo emojis | Rechazar como frase inválida | CONFIRMED |
+| EC-002 | Entrada con menos de 3 letras o con emojis, como `!!!`, `ab` o `Hola 😀` | Rechazar como frase inválida | CONFIRMED |
 | EC-003 | Entrada mayor de 280 caracteres o con saltos de línea | Rechazar e informar el límite | CONFIRMED |
 | EC-004 | Diferencias solo en mayúsculas o espacios | Advertir coincidencia textual de 100 % | CONFIRMED |
 | EC-005 | Diferencias en acentos o puntuación | No considerar coincidencia textual automática; continuar con evaluación semántica | CONFIRMED |
@@ -412,6 +437,11 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | EC-015 | Eliminación de una frase usada como evidencia histórica | Excluirla de futuras comparaciones y conservar la evidencia histórica de otras validaciones | CONFIRMED |
 | EC-016 | Frase en otro idioma | No se garantiza la calidad del resultado; la interfaz comunica que el alcance es español | CONFIRMED |
 | EC-017 | Dos guardados simultáneos de contenido similar | Definir la estrategia de consistencia en arquitectura; nunca omitir deliberadamente el flujo HITL | PENDING |
+
+> **Nota (código):** resuelto en código. Empates vectoriales: `ORDER BY distancia ASC, id ASC`; coincidencias textuales: `created_at DESC, id DESC`; siempre una sola candidata.
+
+> **Nota (código):** resuelto en código: no hay control de concurrencia (ni transacción ni bloqueo). Dos guardados simultáneos pueden insertar ambas frases; el flujo HITL no se omite porque cada guardado requiere su propia validación.
+
 
 ---
 
@@ -430,7 +460,7 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | DEC-009 | Permitir que cualquier usuario elimine cualquier frase en el entorno demostrativo | No existe identidad ni propiedad en este MVP | CONFIRMED |
 | DEC-010 | Criterio original de calidad sustituido por un mínimo de 75 % en DEC-019 | Actualización explícita del usuario; se conserva la evaluación reproducible | SUPERSEDED |
 | DEC-011 | Mostrar carga, evitar envíos duplicados y fijar un objetivo normal de 5 segundos | Hace observable y medible la experiencia de IA | CONFIRMED |
-| DEC-012 | Admitir frases de una línea, de 1 a 280 caracteres y con al menos una letra | Define de forma verificable el concepto de frase corta | CONFIRMED |
+| DEC-012 | Admitir frases de una línea, de hasta 280 caracteres, con al menos 3 letras y sin emojis | Define de forma verificable el concepto de frase corta | CONFIRMED |
 | DEC-013 | Mostrar un listado simple, más reciente primero, sin metadata técnica visible | Reduce ruido sin perder trazabilidad interna | CONFIRMED |
 | DEC-014 | Excluir frases eliminadas de comparaciones futuras y conservar evidencia histórica | Evita resultados obsoletos sin destruir el historial de otras validaciones | CONFIRMED |
 | DEC-015 | Iniciar con una base vacía y ofrecer datos de demostración opcionales | Separa la experiencia normal de la evidencia preparada | CONFIRMED |
@@ -456,6 +486,9 @@ El tiempo máximo de espera técnico antes de declarar timeout se definirá en a
 | Q-006 | ¿Cuáles son los contratos concretos de la API REST? | Derivarlos de los flujos y criterios aprobados | PENDING | Arquitectura / SDD |
 | Q-007 | ¿Cómo se resuelven empates exactos entre candidatas semánticas? | Usar un criterio determinista y documentado | PENDING | Arquitectura / SDD |
 | Q-008 | ¿Qué garantía de consistencia se aplicará a solicitudes concurrentes similares? | Definirla sin cambiar el flujo HITL aprobado | PENDING | Arquitectura / SDD |
+
+> **Nota (código):** el código no ejecuta MiniLM dentro de Node.js: llama a un contenedor Text Embeddings Inference (TEI 1.9.4, float32, mean pooling, 384 dimensiones) mediante LangChain `OpenAIEmbeddings` (`apiKey` vacía). El modelo es `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, no la variante Xenova/ONNX q8.
+
 
 Las preguntas abiertas son técnicas y no bloquean la aprobación del alcance de producto. No autorizan cambios en el comportamiento confirmado.
 

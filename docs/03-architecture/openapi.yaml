@@ -42,7 +42,7 @@ paths:
                     data:
                       - id: 123e4567-e89b-42d3-a456-426614174000
                         text: Me gusta viajar a Cusco
-                        createdAt: '2026-10-21T19:02:00Z'
+                        createdAt: '2026-10-21T19:02:00.000Z'
                     meta: { page: 1, limit: 20, total: 1, totalPages: 1 }
         '400': { $ref: '#/components/responses/QueryBadRequest' }
         '500': { $ref: '#/components/responses/ListInternalError' }
@@ -58,7 +58,7 @@ paths:
         un reintento puede crear otra frase con la misma validación.
         No recalcula el embedding ni la similitud; permite duplicados confirmados.
         Los parámetros de consulta se ignoran. No aplica rate limiting. Referencia inexistente:
-        400 INVALID_VALIDATION_ID. Modelo/versión incompatible: 500 INTERNAL_ERROR seguro.
+        400 INVALID_VALIDATION_ID. Modelo/versión incompatible: 409 INCOMPATIBLE_MODEL.
       requestBody:
         required: true
         content:
@@ -86,7 +86,7 @@ paths:
                     data:
                       id: 123e4567-e89b-42d3-a456-426614174000
                       text: Me gusta viajar a Cusco
-                      createdAt: '2026-10-21T19:02:00Z'
+                      createdAt: '2026-10-21T19:02:00.000Z'
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/RegistrationInternalError' }
@@ -108,7 +108,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '204': { description: Frase eliminada lógicamente; sin contenido }
-        '400': { $ref: '#/components/responses/QueryBadRequest' }
+        '400': { $ref: '#/components/responses/PathIdBadRequest' }
         '404': { $ref: '#/components/responses/PhraseNotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
   /phrase-validations:
@@ -147,7 +147,7 @@ paths:
                   value:
                     data:
                       validationId: '550e8400-e29b-41d4-a716-446655440000'
-                      expiresAt: '2026-10-21T19:15:00Z'
+                      expiresAt: '2026-10-21T19:15:00.000Z'
                       requiresConfirmation: true
                       match:
                         type: vector
@@ -158,7 +158,7 @@ paths:
                   value:
                     data:
                       validationId: '550e8400-e29b-41d4-a716-446655440000'
-                      expiresAt: '2026-10-21T19:15:00Z'
+                      expiresAt: '2026-10-21T19:15:00.000Z'
                       requiresConfirmation: false
                       match:
                         type: vector
@@ -169,7 +169,7 @@ paths:
                   value:
                     data:
                       validationId: '550e8400-e29b-41d4-a716-446655440000'
-                      expiresAt: '2026-10-21T19:15:00Z'
+                      expiresAt: '2026-10-21T19:15:00.000Z'
                       requiresConfirmation: true
                       match:
                         type: textual_exact
@@ -180,7 +180,7 @@ paths:
                   value:
                     data:
                       validationId: '550e8400-e29b-41d4-a716-446655440000'
-                      expiresAt: '2026-10-21T19:15:00Z'
+                      expiresAt: '2026-10-21T19:15:00.000Z'
                       requiresConfirmation: false
                       match: null
         '400': { $ref: '#/components/responses/ValidationBadRequest' }
@@ -190,11 +190,11 @@ components:
   schemas:
     ValidationPhraseText:
       type: string
-      minLength: 1
+      minLength: 3
       maxLength: 280
       description: |
-        De 1 a 280 puntos de código Unicode del original, incluidos espacios externos.
-        trim no vacío, sin controles Unicode Cc. Signos y emojis permitidos.
+        Hasta 280 puntos de código Unicode del original, incluidos espacios externos.
+        trim no vacío, al menos 3 letras, sin emojis ni controles Unicode Cc. Puntuación permitida.
         El original se conserva; normalización solo para comparar espacios y mayúsculas.
     Phrase:
       type: object
@@ -331,8 +331,10 @@ components:
             - PHRASE_MISMATCH
             - VALIDATION_EXPIRED
             - VALIDATION_ALREADY_USED
+            - INCOMPATIBLE_MODEL
             - CONFIRMATION_REQUIRED
             - PHRASE_NOT_FOUND
+            - HTTP_ERROR
             - INTERNAL_ERROR
             - AI_UNAVAILABLE
             - DATABASE_ERROR
@@ -353,7 +355,7 @@ components:
         - $ref: '#/components/schemas/ProblemDetails'
         - properties:
             status: { const: 409 }
-            code: { enum: [VALIDATION_EXPIRED, VALIDATION_ALREADY_USED, CONFIRMATION_REQUIRED] }
+            code: { enum: [VALIDATION_EXPIRED, VALIDATION_ALREADY_USED, INCOMPATIBLE_MODEL, CONFIRMATION_REQUIRED] }
     NotFoundProblem:
       allOf:
         - $ref: '#/components/schemas/ProblemDetails'
@@ -399,9 +401,9 @@ components:
             status: 400
             detail: Los datos enviados no son válidos.
             code: VALIDATION_ERROR
-            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, sin controles ni texto vacío.'] }]
+            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, con al menos 3 letras, sin emojis, controles ni texto vacío.'] }]
     Conflict:
-      description: Validación expirada, consumida o que exige confirmación
+      description: Validación expirada, consumida, emitida para otro modelo/versión o que exige confirmación
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/ConflictProblem' }
@@ -443,6 +445,17 @@ components:
             detail: Los parámetros de la solicitud no son válidos.
             code: VALIDATION_ERROR
             errors: [{ field: page, messages: ['page must not be less than 1'] }]
+    PathIdBadRequest:
+      description: El parámetro de ruta id no es un UUID
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
+          example:
+            title: Bad Request
+            status: 400
+            detail: Los parámetros de la solicitud no son válidos.
+            code: VALIDATION_ERROR
+            errors: [{ field: id, messages: ['id must be a UUID'] }]
     ValidationBadRequest:
       description: Texto inválido o propiedades desconocidas del cuerpo
       content:
@@ -453,7 +466,7 @@ components:
             status: 400
             detail: Los parámetros de la solicitud no son válidos.
             code: VALIDATION_ERROR
-            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, sin controles ni texto vacío.'] }]
+            errors: [{ field: text, messages: ['text debe contener de 1 a 280 puntos de código Unicode, con al menos 3 letras, sin emojis, controles ni texto vacío.'] }]
     ListInternalError:
       description: Fallo de base de datos, fallo interno o datos persistidos inválidos
       content:
@@ -461,7 +474,7 @@ components:
           schema: { $ref: '#/components/schemas/ListInternalProblem' }
           example: { title: Internal Server Error, status: 500, detail: Ocurrió un error de base de datos., code: DATABASE_ERROR }
     RegistrationInternalError:
-      description: Fallo de base de datos, fallo interno, datos persistidos inválidos o modelo/versión incompatible
+      description: Fallo de base de datos, fallo interno o datos persistidos inválidos
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/RegistrationInternalProblem' }

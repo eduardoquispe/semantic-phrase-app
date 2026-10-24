@@ -1,39 +1,40 @@
 # Bloque 05 — Arquitectura de Persistencia
 
+> **Revisado contra el código implementado (2026-10-24); ante discrepancia manda el código.**
+
 Cambio incompatible (2026-10-22): `validationId` sustituye a `validationToken`, sin alias.
 Se devuelve el UUID v4 aleatorio de la validación persistida, sin firma ni JWT.
 Los JWT anteriores dejan de formar parte del contrato; las filas existentes pueden
 referenciarse por su UUID. No hay migración ni secreto de firma requerido.
-El registro queda fuera de F002: deberá buscar por `validationId`, comprobar
-vigencia (`now >= expiresAt` implica expiración), texto, confirmación y estado no
-consumido, y consumir la validación atómicamente con el guardado de la frase.
-TTL configurable inicialmente de 15 minutos; respuesta y fila comparten expiración.
+El registro (F003) busca por `validationId`, comprueba vigencia (`now >= expiresAt`
+implica expiración), texto, modelo/versión, confirmación y estado no consumido, inserta
+la frase y después marca la validación como consumida (dos escrituras secuenciales,
+**sin transacción**; ver §9.2). TTL configurable (15 minutos por defecto); respuesta y
+fila comparten expiración.
 
 
 **Proyecto:** Semantic Phrase App  
-**Estado:** Aprobado — decisiones B05-D01 a B05-D23  
+**Estado:** Diseño aprobado, revisado contra el código implementado — decisiones B05-D01 a B05-D23  
 **Fecha:** 21 de octubre de 2026  
 **Ruta objetivo:** `docs/03-architecture/05-data-architecture.md`  
-**Alcance:** Diseño documental de persistencia; **no** constituye implementación, migración ejecutada ni inicialización de PostgreSQL.
+**Alcance:** Persistencia implementada (Drizzle + PostgreSQL/pgvector, 3 migraciones en `apps/backend/drizzle/migrations`). Donde el diseño original difería, este documento describe el código.
 
 ## 1. Visión general
 
-El MVP utiliza **PostgreSQL + extensión pgvector** para almacenar frases, embeddings y validaciones temporales. La API **NestJS/TypeScript** accede a los datos mediante **Drizzle ORM** y tres adaptadores de infraestructura que implementan los puertos aprobados del módulo `PhrasesModule`. Se mantienen dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`.
+El MVP utiliza **PostgreSQL + extensión pgvector** para almacenar frases, embeddings y validaciones temporales. La API **NestJS/TypeScript** accede a los datos mediante **Drizzle ORM** y dos repositorios de infraestructura (`DrizzlePhraseRepository`, `DrizzlePhraseValidationRepository`) que implementan los puertos del módulo `PhrasesModule`. Se mantienen dos Aggregate Roots independientes: `Phrase` y `PhraseValidation`.
 
-La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones, se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se devuelve el UUID persistido. `CreatePhraseUseCase` verifica la referencia y la confirmación HITL cuando corresponda, y el adaptador de registro consume la validación y crea la frase **en una misma transacción**, sin volver a ejecutar el modelo.
+La validación semántica se produce **antes** del registro definitivo: se genera un embedding MiniLM de 384 dimensiones (servicio TEI), se busca primero igualdad textual normalizada y, si no existe, la coincidencia vectorial **Top-1 exacta**. El resultado se guarda temporalmente en `phrase_validations` y se devuelve el UUID persistido. `CreatePhraseUseCase` verifica la referencia y la confirmación HITL cuando corresponda, inserta la frase y **después** marca la validación como consumida (dos escrituras, **sin transacción**), sin volver a ejecutar el modelo.
 
-**Principios de alcance:** simplicidad del MVP; integridad de la operación de guardado; SQL y Drizzle restringidos a infraestructura; sin HNSW/IVFFlat, workers, colas, tablas de embeddings separadas, repositorios genéricos ni Unit of Work personalizado.
+**Principios de alcance:** simplicidad del MVP; guardado sin transacción (ver §9.2); SQL y Drizzle restringidos a infraestructura; sin HNSW/IVFFlat, workers, colas, tablas de embeddings separadas, repositorios genéricos ni Unit of Work personalizado.
 
 ## 2. Fuentes y compatibilidad con bloques anteriores
 
 | Fuente | Restricciones heredadas |
 |---|---|
-| `docs/03-architecture/01-system-overview.md` | Monolito modular; pnpm workspaces; NestJS REST síncrono; backend hexagonal; frontend React por funcionalidades; HITL. |
-| `docs/03-architecture/02-backend-architecture.md` | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; tres casos de uso; `PhraseRepositoryPort`, `PhraseValidationRepositoryPort` y `PhraseRegistrationPort`; referencia UUID y registro atómico; Jest. |
-| `docs/03-architecture/04-ai-architecture.md` | MiniLM `Xenova/paraphrase-multilingual-MiniLM-L12-v2`, ONNX `q8`, 384 dimensiones, mean pooling, L2; coseno; Top-1 exacto; umbral inicial `0.8538613695045911`; un solo modelo activo y versionado compatible. |
-| Evaluación proporcionada anteriormente, **“Evaluación y decisión de modelo para el MVP”** | Línea base de evaluación de MiniLM y viabilidad del flujo PostgreSQL/pgvector; no supone garantía de detección semántica perfecta. |
-
-**Limitación documental:** no se pudo verificar una copia con la ruta exacta `docs/00-discovery/product-brief.md` ni `docs/01-ai-feasibility/model-evaluation.md`. La evaluación original sí está disponible bajo otro nombre. No se atribuyen a esos dos archivos reglas adicionales no comprobadas. El contrato REST exacto, la forma de la referencia y los límites textuales se definirán donde corresponda, sin inventarlos aquí.
+| `docs/03-architecture/01-system-overview.md` | Monolito modular; apps independientes (submódulos Git, sin pnpm workspaces); NestJS REST síncrono; backend hexagonal; frontend React por funcionalidades; HITL. |
+| `docs/03-architecture/02-backend-architecture.md` | `Phrase` y `PhraseValidation` como Aggregate Roots independientes; casos de uso (validar, crear, listar, eliminar); `PhraseRepositoryPort` y `PhraseValidationRepositoryPort`; referencia UUID. |
+| `docs/03-architecture/04-ai-architecture.md` | MiniLM `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` servido por TEI (float32, mean pooling), 384 dimensiones; coseno; Top-1 exacto; umbral inicial `0.8538613695045911`; un solo modelo activo y versionado compatible. |
+| Evaluación **«Evaluación y decisión de modelo para el MVP»** (`docs/01-ai-feasibility/model-decision.md`) | Línea base de evaluación de MiniLM y viabilidad del flujo PostgreSQL/pgvector; no supone garantía de detección semántica perfecta. |
 
 ## 3. Tecnologías y decisiones de infraestructura
 
@@ -43,11 +44,11 @@ La validación semántica se produce **antes** del registro definitivo: se gener
 | Extensión | pgvector | Columna `vector(384)` y operador de distancia coseno `<=>`. |
 | Acceso TypeScript | Drizzle ORM | Tipado, consultas SQL transparentes y transacciones. |
 | Migraciones | Drizzle Kit + SQL personalizado | Historial reproducible; habilitar la extensión y otros DDL particulares. |
-| Driver | `pg` / `pg.Pool` | Una instancia compartida por los adaptadores, sin conexiones por solicitud. |
+| Driver | `pg` vía `drizzle-orm/node-postgres` | Un único cliente Drizzle compartido (`DatabaseProvider`) con `connectionTimeoutMillis` de 5000 ms; sin conexiones por solicitud. |
 | Identidad | UUID v4 | Claves primarias independientes de la base. |
-| Pruebas MVP | Jest unitario | No se incorpora base de pruebas ni Testcontainers inicialmente. |
+| Pruebas | Jest unitario + e2e (Supertest) | Los e2e simulan los puertos; no hay base de pruebas ni Testcontainers. |
 
-La conexión es una responsabilidad técnica compartida. **No** se crea un `DatabaseModule` global por defecto; `PhrasesModule` compone los adaptadores mediante DI. El pool debe cerrarse al finalizar la aplicación y sus credenciales se suministrarán por configuración de entorno.
+La conexión es una responsabilidad técnica compartida: `DatabaseModule` (no global, en `src/shared/infrastructure/database/`) exporta `DatabaseProvider`, que lee `DATABASE_URL` mediante `ConfigurationPort`, cierra el pool al apagar la aplicación y envuelve los fallos en `DatabaseError`. `PhrasesModule` importa `DatabaseModule` y compone los repositorios mediante DI.
 
 ## 4. Modelo de datos y diagrama ER
 
@@ -94,9 +95,9 @@ erDiagram
 | `embedding` | `VECTOR(384)` | `NOT NULL` | Embedding definitivo generado en validación. |
 | `model_id` | `VARCHAR(255)` | `NOT NULL` | Identificador del modelo. |
 | `model_version` | `VARCHAR(150)` | `NOT NULL` | Identidad del espacio vectorial efectivo. |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; valor inicial de tiempo | Ordenación y auditoría mínima. |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; sin `DEFAULT` en BD (lo asigna la aplicación) | Ordenación y auditoría mínima. |
 | `status` | `SMALLINT` | `NOT NULL`; `DEFAULT 1`; `CHECK (status IN (1, 2))` | Estado de la frase: `1` = activa, `2` = eliminada (eliminación lógica), irreversible desde el MVP. |
-| `deleted_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Fecha de eliminación; no nulo solo si `status = 2`. |
+| `deleted_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Fecha de eliminación; la aplicación lo fija solo al pasar a `status = 2` (no hay `CHECK` que lo exija). |
 
 Una frase está **activa** si `status = 1`. Listado, coincidencia textual, Top-1 vectorial y conteo paginado consideran solo frases activas. La eliminación es un `UPDATE ... SET status = 2, deleted_at = NOW() WHERE id = :id AND status = 1`; no hay `DELETE` físico ni restauración.
 
@@ -117,7 +118,7 @@ No habrá `UNIQUE` en `text` o `normalized_text`: HITL puede permitir que una pe
 | `requires_confirmation` | `BOOLEAN` | `NOT NULL` | Resultado funcional calculado por aplicación. |
 | `expires_at` | `TIMESTAMPTZ` | `NOT NULL` | Validez lógica de la validación. |
 | `consumed_at` | `TIMESTAMPTZ` | `NULL` permitido; inicialmente `NULL` | Momento de utilización para el guardado. |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; valor inicial de tiempo | Creación de validación. |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL`; sin `DEFAULT` en BD | Creación de validación (la aplicación la trunca a segundos, igual que `expires_at`). |
 
 **Aclaración de `similarity_score`:** para una coincidencia textual exacta prioritaria **no se inventará** una puntuación de coseno. Puede haber `matched_phrase_id` informado y `similarity_score = NULL` cuando la coincidencia es textual. Por B05-D21 no se crea un `CHECK` que exija simultaneidad de ambos campos. El resultado de aplicación distingue `textual_exact`, `vector` y `none` conceptualmente; la representación exacta en HTTP corresponde al bloque API. No se añade una nueva columna para ese discriminador sin aprobación: en esta versión, cuando `matched_phrase_id` exista y `similarity_score` sea `NULL`, se interpreta como coincidencia textual; ambos `NULL` significan ausencia de candidata. La lógica de aplicación verifica la coherencia.
 
@@ -131,11 +132,11 @@ No se confunde esta operación con la normalización **L2** de embeddings. No se
 
 ## 5. Almacenamiento y compatibilidad de embeddings
 
-- **MVP:** MiniLM, mean pooling, ONNX `q8`, CPU, normalización L2, **384** componentes; `VECTOR(384)` tanto en `phrases` como en `phrase_validations`.
-- El adaptador Hugging Face/LangChain genera el vector y comprueba dimensión, valores finitos, norma L2 esperada y `model_id`/`model_version` antes de entregarlo.
+- **MVP:** MiniLM servido por TEI (float32, mean pooling, CPU), salida ya normalizada por TEI, **384** componentes; `VECTOR(384)` tanto en `phrases` como en `phrase_validations`.
+- El adaptador (`HuggingFaceEmbeddingAdapter`, LangChain `OpenAIEmbeddings` contra TEI) genera el vector; el value object `Embedding` exige 384 componentes finitos. **No** se comprueba la norma L2 ni se consulta `/info` de TEI: `model_id` y `model_version` se copian de `AI_MODEL` y `AI_EMBEDDING_VERSION`. Al arrancar se verifica `AI_EMBEDDING_DIMENSIONS = 384` con una inferencia de prueba.
 - La versión representa el **espacio vectorial efectivo** (revisión/pesos, pooling, normalización y parámetros relevantes); el mismo número de dimensiones no garantiza compatibilidad.
 - Los adaptadores de Drizzle **no normalizan nuevamente** el vector. PostgreSQL valida la dimensión física y `NOT NULL`; no se añaden `CHECK` de norma o de coherencia de resultados semánticos.
-- Los registros de validación retienen el vector generado. Al registrarse una frase, se **copia ese mismo embedding** dentro de la transacción sin nueva inferencia.
+- Los registros de validación retienen el vector generado. Al registrarse una frase, se **copia ese mismo embedding** sin nueva inferencia.
 - Los cambios de modelo son operaciones **manuales y coordinadas**, no una selección dinámica por solicitud. Una futura dimensión diferente exige evolución del esquema; no se mezclan vectores incompatibles en una misma búsqueda.
 
 ### Evolución manual de modelo
@@ -153,14 +154,14 @@ No se exige automatización de reindexado ni doble escritura de embeddings en el
 
 ### 6.1. Orden de consulta
 
-1. `ValidatePhraseUseCase` obtiene siempre el embedding válido de 384 dimensiones y metadatos.
-2. Consulta igualdad sobre `normalized_text` usando el B-tree.
-3. **Si hay coincidencia textual**, priorizar una candidata de forma determinista; no ejecutar consulta vectorial, devolver coincidencia textual y solicitar confirmación. No fabricar puntaje coseno.
-4. **Si no hay igualdad textual**, consultar **Top-1 exacto** por coseno sobre frases con `model_version` (y modelo/espacio efectivo) compatible.
-5. Ante ausencia de frases compatibles, devolver resultado válido sin candidata ni puntaje; ante error técnico, fallar de manera controlada, nunca reportar falsamente «no hay coincidencias».
-6. El caso de uso aplica `AI_SIMILARITY_THRESHOLD = 0.8538613695045911` inicialmente **solo a la similitud vectorial**, y guarda la validación temporal.
+1. `ValidatePhraseUseCase` obtiene el embedding de 384 dimensiones y su modelo/versión, y llama **una sola vez** a `PhraseRepositoryPort.findValidationMatch`.
+2. Esa operación consulta igualdad sobre `normalized_text` (B-tree), solo frases activas e **ignorando el modelo**.
+3. **Si hay coincidencia textual**, la devuelve sin consulta vectorial y sin puntaje (`similarityScore: null`); requiere confirmación.
+4. **Si no hay igualdad textual**, consulta **Top-1 exacto** por coseno sobre frases activas con `model_id` y `model_version` iguales a los vigentes.
+5. **Si no hay candidata vectorial**: sin frases activas → resultado válido sin candidata; con frases activas pero ninguna del modelo/versión vigente → `IncompatiblePhraseCollectionError`, que llega al cliente como 500 `INTERNAL_ERROR`. Los errores de BD se traducen a `DatabaseError` (500 `DATABASE_ERROR`).
+6. La comparación con `AI_SIMILARITY_THRESHOLD` (0.8538613695045911 por defecto, inclusiva `>=`) la resuelve el value object `PhraseValidationMatch` **solo para similitud vectorial**; después se guarda la validación temporal.
 
-Para múltiples coincidencias textuales iguales se elegirá una sola de forma estable (por ejemplo `created_at DESC, id DESC`). No implica unicidad ni bloqueo del registro.
+Para múltiples coincidencias textuales iguales se elige una sola con `created_at DESC, id DESC`; en el Top-1 vectorial el desempate es `distance ASC, id ASC`. La puntuación se acota a [-1, 1]. No implica unicidad ni bloqueo del registro.
 
 ### 6.2. SQL ilustrativo (no ejecutado)
 
@@ -206,7 +207,7 @@ LIMIT :limit OFFSET :offset;
 
 El `total` de la paginación cuenta solo frases con `status = 1`.
 
-Tamaño inicial **20**; `LIMIT/OFFSET`, con valores validados/no negativos. No seleccionar `embedding` en el listado. La respuesta paginada no debe asumir estabilidad absoluta entre páginas cuando hay inserciones concurrentes (trade-off aceptado por el MVP).
+Tamaño por defecto **20**, máximo 100; `LIMIT/OFFSET`, con valores validados. El `total` sale de una segunda consulta `count(*)` sobre `status = 1`, sin transacción compartida. **Limitación actual:** el repositorio hace `select()` de todas las columnas, incluido `embedding`, y el mapper lo parsea por fila (no se excluye el vector del listado). La respuesta paginada no debe asumir estabilidad absoluta entre páginas cuando hay inserciones concurrentes (trade-off aceptado por el MVP).
 
 ## 7. Índices y rendimiento
 
@@ -228,100 +229,87 @@ No se crearán **HNSW ni IVFFlat**, porque el contrato exige Top-1 exacto. Estos
 flowchart TB
     V[ValidatePhraseUseCase] --> PR[PhraseRepositoryPort]
     V --> VR[PhraseValidationRepositoryPort]
-    C[CreatePhraseUseCase] --> RR[PhraseRegistrationPort]
+    C[CreatePhraseUseCase] --> PR
+    C --> VR
     L[ListPhrasesUseCase] --> PR
+    X[DeletePhraseUseCase] --> PR
     PR -.implementado por.-> DR[DrizzlePhraseRepository]
     VR -.implementado por.-> DV[DrizzlePhraseValidationRepository]
-    RR -.implementado por.-> DT[DrizzlePhraseRegistrationAdapter]
-    DR --> D[Drizzle + pg.Pool compartido]
+    DR --> D[Drizzle + DatabaseProvider compartido]
     DV --> D
-    DT --> D
     D --> DB[(PostgreSQL + pgvector)]
 ```
 
 | Adaptador | Tablas | Operaciones pertinentes |
 |---|---|---|
-| `DrizzlePhraseRepository` | `phrases` | Coincidencia textual, Top-1 exacta compatible, listado paginado. |
-| `DrizzlePhraseValidationRepository` | `phrase_validations` | Crear validación temporal, recuperar validación cuando aplique. |
-| `DrizzlePhraseRegistrationAdapter` | Ambas | Consumir condicionalmente validación e insertar frase dentro de **una transacción**. |
+| `DrizzlePhraseRepository` | `phrases` | `save`, `findValidationMatch` (textual → Top-1 → comprobación de compatibilidad), `list` paginado, `softDelete` (`UPDATE ... WHERE status = 1 RETURNING`). |
+| `DrizzlePhraseValidationRepository` | `phrase_validations` | `save`, `update` (p. ej. `consumed_at`), `findById`. |
 
-Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Los adaptadores son especializados por **responsabilidad**, no por obligación «una tabla = un repositorio». No se implementa un `UnitOfWork` ni un coordinador transaccional genérico.
+Los puertos son **clases abstractas TypeScript** definidas en aplicación y utilizadas como referencias de DI NestJS; ningún puerto expone Drizzle, SQL o `pg`. Hay un repositorio por tabla. No existe `PhraseRegistrationPort` ni adaptador transaccional, `UnitOfWork` o coordinador genérico.
 
-`PhrasePersistenceMapper` y `PhraseValidationPersistenceMapper` traducen registros de Drizzle a entidades y viceversa **cuando se necesita reconstruir un Aggregate Root**. Para respuestas de consulta como `{id, text, similarity}` o proyecciones de lista, se pueden devolver resultados tipados de aplicación sin construir entidades completas. No se crea mapper genérico. Las conversiones de fechas, nulabilidad y vector deben ser explícitas cuando cambien de representación.
+`DrizzlePhraseMapper` y `DrizzlePhraseValidationMapper` traducen registros de Drizzle a entidades y viceversa **cuando se necesita reconstruir un Aggregate Root**. Para respuestas de consulta como `{id, text, similarity}` o proyecciones de lista, se pueden devolver resultados tipados de aplicación sin construir entidades completas. No se crea mapper genérico. Las conversiones de fechas, nulabilidad y vector deben ser explícitas cuando cambien de representación.
 
 ### Estructura de referencia (no es creación de archivos)
 
 ```text
-apps/api/
+apps/backend/
 ├── src/
-│   ├── modules/
-│   │   └── phrases/
-│   │       ├── domain/
-│   │       ├── application/
-│   │       │   └── ports/outbound/
-│   │       └── infrastructure/outbound/persistence/
-│   │           ├── schema/
-│   │           │   ├── phrases.schema.ts
-│   │           │   └── phrase-validations.schema.ts
-│   │           ├── repositories/
-│   │           │   ├── drizzle-phrase.repository.ts
-│   │           │   ├── drizzle-phrase-validation.repository.ts
-│   │           │   └── drizzle-phrase-registration.adapter.ts
-│   │           └── mappers/
+│   ├── modules/phrases/infrastructure/persistence/drizzle/
+│   │   ├── phrase/
+│   │   │   ├── drizzle-phrases.model.ts
+│   │   │   ├── drizzle-phrase.repository.ts
+│   │   │   └── drizzle-phrase.mapper.ts
+│   │   └── phrase-validation/
+│   │       ├── drizzle-phrase-validations.model.ts
+│   │       ├── drizzle-phrase-validation.repository.ts
+│   │       └── drizzle-phrase-validation.mapper.ts
 │   └── shared/infrastructure/database/
-│       └── drizzle.provider.ts
-├── drizzle/migrations/
+│       ├── database.module.ts
+│       ├── database.provider.ts
+│       ├── pg-vector.column.ts
+│       └── errors/database.error.ts
+├── drizzle/migrations/        # 0000 phrases + extensión vector, 0001 phrase_validations, 0002 status/deleted_at
 └── drizzle.config.ts
 ```
 
-La configuración Drizzle Kit debe descubrir los esquemas de `PhrasesModule` y almacenar el historial de migraciones en un directorio compartido del backend. Solo se materializan archivos que la implementación requiera.
+`drizzle.config.ts` descubre los esquemas con el glob `**/*.model.ts` bajo `persistence/drizzle/` y escribe el historial en `drizzle/migrations`.
 
 ## 9. Transacciones, concurrencia y estado HITL
 
 ### 9.1. Semántica de consumo
 
-Una validación está **pendiente y vigente** si `consumed_at IS NULL AND expires_at > NOW()`; está **consumida** si `consumed_at IS NOT NULL`, y **expirada sin consumo** si no está consumida y pasó su fecha de expiración. No existe columna `status`.
+Una validación está **pendiente y vigente** si `consumed_at IS NULL` y `now < expires_at` (la aplicación evalúa la expiración en memoria con `new Date()`, no con `NOW()` de la BD); está **consumida** si `consumed_at IS NOT NULL`, y **expirada sin consumo** si no está consumida y pasó su fecha de expiración. No existe columna `status`.
 
-`PHRASE_VALIDATION_TTL_MINUTES=15` es el valor inicial configurable. La aplicación calcula `expires_at` al validar y la referencia UUID debe respetar esa misma expiración. No se requiere scheduler para invalidarla: expiración **lógica**.
+`PHRASE_VALIDATION_TTL_MINUTES` (15 por defecto) es configurable. La aplicación calcula `expires_at` al validar (truncado a segundos) y la referencia UUID debe respetar esa misma expiración. No se requiere scheduler para invalidarla: expiración **lógica**.
 
-### 9.2. Transacción de registro
+### 9.2. Registro y consumo (sin transacción)
 
-`CreatePhraseUseCase` busca por validationId y comprueba asociación de la referencia, texto autorizado, versión, vigencia y confirmación HITL cuando aplique; la infraestructura garantiza que el **consumo y la inserción sean atómicos**.
+`CreatePhraseUseCase` lee la validación por `validationId` y comprueba, en este orden: existencia (`INVALID_VALIDATION_ID`), no consumida (`VALIDATION_ALREADY_USED`), vigencia (`VALIDATION_EXPIRED`), texto idéntico al original (`PHRASE_MISMATCH`), modelo/versión (`INCOMPATIBLE_MODEL`, 409) y confirmación HITL (`CONFIRMATION_REQUIRED`). Luego:
 
-Dentro de **una transacción Drizzle** con aislamiento predeterminado PostgreSQL `READ COMMITTED`:
-
-1. Intentar `UPDATE phrase_validations SET consumed_at = ... WHERE id = ... AND consumed_at IS NULL AND expires_at > NOW()` con `RETURNING` de datos necesarios, incluida la frase y el embedding almacenados.
-2. Verificar que se actualizó **exactamente una fila**; cero filas indica validación ausente, expirada o consumida, y conduce a reversión y tratamiento funcional controlado.
-3. Comprobar la concordancia de texto/modelo/versión y las condiciones pertinentes antes del `INSERT`; si no concuerdan, lanzar error y revertir toda la transacción. Las verificaciones previas del caso de uso no sustituyen la lectura efectiva de la validación dentro de la operación atómica.
-4. Insertar en `phrases` texto y embedding tomados de la validación aprobada, sin segunda inferencia.
-5. `COMMIT` solo si todo termina correctamente; ante fallo, `ROLLBACK` del `UPDATE` y del `INSERT`.
+1. `PhraseRepositoryPort.save(phrase)`: `INSERT INTO phrases` con texto, normalizado, embedding y modelo copiados de la validación (sin segunda inferencia).
+2. `PhraseValidationRepositoryPort.update(id, { consumedAt })`: `UPDATE phrase_validations SET consumed_at = ...` **sin** predicado `consumed_at IS NULL` ni de expiración, y sin `RETURNING`.
 
 ```mermaid
 sequenceDiagram
     participant UC as CreatePhraseUseCase
-    participant P as PhraseRegistrationPort
-    participant A as DrizzlePhraseRegistrationAdapter
+    participant VR as PhraseValidationRepositoryPort
+    participant PR as PhraseRepositoryPort
     participant DB as PostgreSQL
-    UC->>P: Registrar con validación autorizada
-    P->>A: Ejecutar operación atómica
-    A->>DB: BEGIN
-    A->>DB: UPDATE condicional ... RETURNING
-    alt Actualizó exactamente una fila y datos coherentes
-        DB-->>A: Validación y embedding guardado
-        A->>DB: INSERT INTO phrases
-        A->>DB: COMMIT
-        A-->>UC: Frase registrada
-    else Consumida, expirada, ausente o error
-        A->>DB: ROLLBACK
-        A-->>UC: Error controlado
-    end
+    UC->>VR: findById(validationId)
+    VR->>DB: SELECT
+    UC->>UC: Comprobar consumo, vigencia, texto, modelo, confirmación
+    UC->>PR: save(phrase)
+    PR->>DB: INSERT INTO phrases
+    UC->>VR: update(id, consumedAt)
+    VR->>DB: UPDATE phrase_validations
+    UC-->>UC: Frase registrada
 ```
 
-PostgreSQL sincroniza actualizaciones concurrentes de la misma fila. En `READ COMMITTED`, la segunda petición comprueba nuevamente la condición después de esperar el bloqueo de la primera y no puede consumir exitosamente esa validación si ya tiene `consumed_at`. No hace falta `SELECT FOR UPDATE` adicional ni `SERIALIZABLE` por defecto. Esta garantía cubre **una validación por registro**, no impide que dos validaciones **distintas** registren frases semejantes, comportamiento coherente con HITL.
+**Consecuencias asumidas:** no hay transacción ni compensación. Si falla el `INSERT`, no se intenta el consumo. Si falla el `UPDATE`, el error se propaga (500 `DATABASE_ERROR`) y la frase **permanece insertada**; un reintento puede duplicarla. Dos solicitudes concurrentes con la misma validación pueden crear dos frases. Dos validaciones distintas pueden registrar frases semejantes (coherente con HITL).
 
 ### 9.3. Retención
 
-Registros expirados y consumidos pueden permanecer físicamente. Se realizará **limpieza manual** cuando sea necesario, sin cron, workers o eliminación oportunista durante peticiones. La retención exacta se determinará operativamente; la eliminación no afectará frases definitivas por ausencia de FK.
+Registros expirados, consumidos o abandonados permanecen físicamente. La **limpieza es manual**, sin cron, workers o eliminación oportunista durante peticiones. La retención exacta se determinará operativamente; la eliminación no afectará frases definitivas por ausencia de FK.
 
 ## 10. Migraciones y evolución del esquema
 
@@ -343,29 +331,29 @@ Por B05-D15, se hace **traducción selectiva** en infraestructura, sin jerarquí
 
 | Situación | Manejo |
 |---|---|
-| Conexión PostgreSQL fallida, SQL inesperado, error de driver | Registrar detalle técnico de forma segura; emitir error técnico controlado, sin exponer SQL o credenciales. |
-| Restricción física de esquema vulnerada | Convertir a error controlado apropiado, sin filtrar excepciones crudas. |
-| `UPDATE` afecta cero filas | Resultado de consumo imposible / conflicto funcional; no disfrazarlo como indisponibilidad de BD. |
-| Validación expirada o consumida | Error de aplicación; operación atómica no registra frase. |
-| Incompatibilidad de `model_version` | Rechazar; nunca efectuar búsqueda entre espacios incompatibles o guardar usando una validación de modelo incorrecto. |
-| Falla de inserción después de consumir | `ROLLBACK` integral; validación sigue disponible según sus condiciones temporales. |
+| Conexión PostgreSQL fallida, SQL inesperado, error de driver, restricción vulnerada | Cada consulta de ambos repositorios se envuelve en try/catch y lanza `DatabaseError`; `ProblemDetailsFilter` responde 500 `DATABASE_ERROR` sin exponer SQL ni credenciales (la causa se registra en log). |
+| `softDelete` afecta cero filas | `PhraseNotFoundError` → 404 `PHRASE_NOT_FOUND`. |
+| Validación expirada o consumida | Error de aplicación (409); no se registra frase. |
+| Incompatibilidad de modelo/versión al registrar | 409 `INCOMPATIBLE_MODEL`. |
+| Corpus activo sin frases del modelo vigente al validar (sin igualdad textual) | `IncompatiblePhraseCollectionError`, sin filtro dedicado → 500 `INTERNAL_ERROR`. |
+| Falla del `UPDATE` de consumo tras insertar | 500 `DATABASE_ERROR`; la frase queda insertada (ver §9.2). |
 | Coincidencia textual o semántica | Resultado **funcional**; requiere HITL cuando corresponda, no error técnico. |
 
-`GlobalExceptionFilter` de NestJS, establecido en el Bloque 02, transforma errores controlados a HTTP. Códigos de estado y DTO exactos serán parte del contrato API, no de este diseño físico.
+`ProblemDetailsFilter` (global) y filtros específicos por ruta transforman los errores a Problem Details; el contrato está en `06-api-security.md` y `openapi.yaml`.
 
 ## 12. Estrategia de pruebas y comprobación
 
-**Decisión B05-D16:** solo **pruebas unitarias Jest** automatizadas inicialmente. No se crea base adicional, Testcontainers ni pipeline de integración DB en el MVP.
+**Decisión B05-D16 (estado real):** pruebas unitarias Jest junto al código (incluidos los repositorios Drizzle con cliente simulado) y 4 suites e2e con Supertest en `apps/backend/test/` que simulan repositorios, generador de embeddings y configuración. No hay base de pruebas, Testcontainers ni pipeline de integración con PostgreSQL/TEI reales.
 
 | Área | Pruebas unitarias sugeridas |
 |---|---|
 | Dominio | Identidad, invariantes, expiración, consumo. |
 | `ValidatePhraseUseCase` | Prioridad textual, comparación con umbral, ausencia de candidata, incompatibilidad de versión, fallos controlados. |
-| `CreatePhraseUseCase` | Firma/confirmación, reutilización del embedding, sin inferencia repetida, rechazo de validación vencida o consumida. |
+| `CreatePhraseUseCase` | Confirmación, reutilización del embedding, sin inferencia repetida, rechazo de validación vencida, consumida o de modelo incompatible. |
 | Mappers | Reconstrucción de entidades, `NULL`, fechas y metadatos. |
 | Lógica aislable de adaptadores | Manejo de resultado sin filas y clasificación selectiva de errores, sin pretender validar SQL real mediante mocks. |
 
-**Riesgo aceptado:** las pruebas unitarias no demuestran que el DDL, pgvector, el plan Top-1 o el `UPDATE` condicional operen correctamente sobre PostgreSQL. Antes de considerar terminado el reto se requiere una **comprobación manual real y no destructiva** de: extensión activa, migraciones, guardado y lectura de vector 384, recuperación coseno conocida, prioridad textual, ausencia de candidata, reversión de transacción y dos solicitudes concurrentes consumiendo la misma validación. No se confunde esta comprobación con cobertura automatizada de integración. La equivalencia entre la salida LangChain y el pipeline Transformers.js evaluado continúa siendo un **riesgo de integración del Bloque 04**, no se afirma verificada aquí.
+**Riesgo aceptado:** las pruebas unitarias no demuestran que el DDL, pgvector o el plan Top-1 operen correctamente sobre PostgreSQL. Antes de considerar terminado el reto se requiere una **comprobación manual real y no destructiva** de: extensión activa, migraciones, guardado y lectura de vector 384, recuperación coseno conocida, prioridad textual, ausencia de candidata, y el comportamiento del consumo (hoy sin transacción). No se confunde esta comprobación con cobertura automatizada de integración. El umbral se calibró con vectores Xenova ONNX `q8` y hoy se aplica a vectores TEI float32 sin recalibración registrada: es un **riesgo de integración del Bloque 04**, no verificado aquí.
 
 ## 13. Diagramas de secuencia de validación
 
@@ -408,26 +396,26 @@ sequenceDiagram
 | B05-D07 | Sin FK entre tablas de agregados | Limpieza independiente; menor trazabilidad histórica. |
 | B05-D08 | `VECTOR(384)` + `model_id` y `model_version` | Garantiza dimensión, no equivalencia semántica. |
 | B05-D09 | Top-1 exacto; índices convencionales; sin ANN | Recuperación exacta; coste crece con volumen. |
-| B05-D10 | Transacción Drizzle + `UPDATE` condicional | Atomicidad por validación; no impide duplicados de validaciones distintas. |
+| B05-D10 | **Revisada:** `INSERT` de la frase y después `UPDATE` de `consumed_at`, sin transacción | Simple; no es atómico ni impide doble consumo concurrente. |
 | B05-D11 | Limpieza manual | Sin scheduler; requiere mantenimiento eventual. |
-| B05-D12 | Tres adaptadores especializados | Separación de responsabilidades con pocos componentes. |
+| B05-D12 | **Revisada:** dos repositorios (uno por tabla), sin adaptador de registro | Separación simple; el registro coordina ambos desde el caso de uso. |
 | B05-D13 | Mappers por agregado solo cuando aporten valor | Sin mapper genérico; algo de código específico. |
 | B05-D14 | Drizzle Kit generado + SQL personalizado versionado | Reproducibilidad; revisar orden de migraciones. |
 | B05-D15 | Traducción selectiva de errores | Mantiene aislamiento sin taxonomía excesiva. |
 | B05-D16 | Jest unitario solamente, por ahora | Sin garantía automática de SQL/pgvector. |
 | B05-D17 | Schemas en `PhrasesModule` y conexión técnica compartida | Organización por negocio; configuración Drizzle debe incluir schemas. |
-| B05-D18 | Un `pg.Pool` compartido | Reutilización; gestionar cierre del pool. |
+| B05-D18 | Un cliente Drizzle compartido (`DatabaseProvider`) | Reutilización; el pool se cierra al apagar la app. |
 | B05-D19 | TTL 15 minutos configurable por ENV | Referencia y persistencia deben tener expiración consistente. |
-| B05-D20 | Validez vectorial en IA + dimensión en BD | Evita lógica duplicada; no valida norma L2 en BD. |
+| B05-D20 | Validez vectorial en el value object `Embedding` + dimensión en BD | Sin comprobación de norma L2 en ningún punto. |
 | B05-D21 | Coherencia de similitud solo en aplicación | SQL simple; sin `CHECK` semánticos. |
 | B05-D22 | Prioridad textual exacta normalizada | Evita consulta vectorial innecesaria; no fabricar coseno. |
 | B05-D23 | Paginación `LIMIT/OFFSET`, 20 por página | Sencillez; menos óptima a gran escala. |
 
 ## 15. Pendientes delimitados y criterios de cierre
 
-Este documento **cierra el diseño del Bloque 05** sin anticipar implementación. Siguen pendientes del bloque API o de la ejecución del proyecto: contratos HTTP, formato UUID de la referencia, reglas definitivas de entrada, naming preciso de identificadores de versión de modelo, ajuste de configuración de conexiones, tiempos/retención de limpieza manual, verificación de wrapper de IA y comprobaciones manuales sobre PostgreSQL real. No son autorización para alterar silenciosamente decisiones B01–B05.
+Pendientes reales: atomicidad del registro, exclusión del `embedding` en el listado, retención/limpieza de `phrase_validations`, recalibración del umbral con vectores TEI y comprobaciones manuales sobre PostgreSQL real.
 
-**Criterio de aceptación:** el diseño mantiene dos tablas, la búsqueda Top-1 exacta, el almacenamiento 384d/versionado, el flujo HITL, tres adaptadores y el guardado transaccional; sin índice ANN, infraestructura adicional ni ejecución de código.
+**Criterio de aceptación:** dos tablas, búsqueda Top-1 exacta, almacenamiento 384d/versionado, flujo HITL y dos repositorios; sin índice ANN. El registro **no** es transaccional.
 
 ## Referencias técnicas
 
@@ -437,4 +425,4 @@ Este documento **cierra el diseño del Bloque 05** sin anticipar implementación
 
 ---
 
-**Este archivo es exclusivamente documentación. No se ha inicializado PostgreSQL, aplicado migraciones, instalado dependencias ni implementado código de aplicación.**
+**Este archivo describe la persistencia implementada en `apps/backend`.**

@@ -1,103 +1,111 @@
 # Evaluación y decisión de modelo para el MVP
 
+> Documento histórico de la evaluación de modelos realizada para elegir el modelo de embeddings del MVP. Para el estado actual del runtime en producción, ver `docs/00-discovery/product-brief.md` y `docs/03-architecture/04-ai-architecture.md`.
+
 | Campo | Valor |
 |---|---|
 | Fecha de la evaluación | 2026-10-20 y 2026-10-21 |
-| Decisión | Usar MiniLM con inferencia local en Node.js para el reto técnico |
-| Artefacto ejecutado | `Xenova/paraphrase-multilingual-MiniLM-L12-v2`, conversión ONNX de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| Configuración | CPU, `@huggingface/transformers` 3.8.1, pesos `q8`, *mean pooling*, normalización L2, 384 dimensiones |
-| Umbral inicial del MVP | `0.8538613695045911`, configurable; es el probado en el flujo completo, con 8 falsos negativos de 10 positivos |
-| Alcance | Selección práctica para implementar un MVP; no certificación de calidad de producción |
+| Decisión | Usar MiniLM como modelo de embeddings para el MVP |
+| Umbral inicial del MVP | `0.8538613695045911`, configurable |
+| Alcance | Selección práctica para implementar un MVP; no es una certificación de calidad de producción |
 
-## 1. Pregunta y criterio de decisión
+## 1. Metodología de evaluación
 
-El [reto técnico](../00-discovery/reto-tecnico.md) pide detectar posibles duplicados por significado con al menos un modelo de Hugging Face, antes de guardar una frase. Se compararon modelos que pueden ejecutarse localmente para escoger uno que haga viable el flujo completo sin depender de una API de inferencia de pago ni de un servicio Python adicional.
+El [reto técnico](../00-discovery/reto-tecnico.md) pide detectar posibles duplicados por significado con al menos un modelo de Hugging Face, antes de guardar una frase. Se compararon modelos que pueden ejecutarse localmente, con este criterio de selección, en orden de importancia: que generen embeddings correctos, que permitan recuperar y advertir dentro de un flujo con PostgreSQL, y que su memoria, latencia y complejidad sean razonables para una aplicación pequeña.
 
-La elección considera, en este orden, que el modelo produzca embeddings correctos en Node.js, que permita recuperar y advertir en el flujo con PostgreSQL, y que su memoria, latencia y complejidad sean razonables para una aplicación pequeña. Se registran también los errores semánticos: ningún resultado observado permite prometer una detección confiable de todos los duplicados.
+El 75 % de aciertos (15 de 20) fue una **meta interna de la exploración**, usada para leer los primeros resultados. Más adelante, la decisión DEC-022 del [Product Brief](../00-discovery/product-brief.md) dejó de tratarla como condición de entrega. Los resultados de este documento no se recalculan ni se describen como aprobados por ese cambio.
 
-El 75 % de aciertos (15/20) fue una **meta interna de la exploración**. Se aplicó al calificar los experimentos históricos; después, DEC-022 del [Product Brief](../00-discovery/product-brief.md) dejó de tratarlo como condición de entrega. Los resultados no se recalculan ni se describen como aprobados por ese cambio.
+La evaluación se hizo en dos fases principales, cada una con un conjunto de **calibración** (para fijar un umbral de decisión) y uno de **holdout** (reservado, usado una sola vez, sin ajustar nada después de verlo):
 
-## 2. Procedimiento y datos
+- **Fase 1 — Pares de frases:** mide si el modelo distingue frases similares de frases distintas, comparando una pareja a la vez.
+- **Fase 2 — Flujo completo con PostgreSQL:** mide si el modelo, integrado con la base de datos (usando [pgvector](https://github.com/pgvector/pgvector), una extensión de PostgreSQL para buscar por similitud de vectores), encuentra la frase correcta entre varias guardadas y decide bien cuándo alertar. Esta prueba es más exigente porque el modelo tiene que elegir primero la candidata más parecida y luego decidir si avisa.
 
-El procedimiento se resume en el [plan de ejecución](experiment-plan.md). Los pasos efectivamente realizados fueron:
+Antes de estas dos fases se verificó que los cuatro modelos candidatos pudieran ejecutarse y producir vectores válidos (ver sección 2), y después de ellas se compararon costo y manejo de fallos de forma más ligera (caché, tiempos y errores simulados).
 
-1. **Viabilidad en Node.js:** MiniLM, E5, DistilUSE y BGE-M3 generaron embeddings con Transformers.js y ONNX en CPU. Se verificaron dimensión, finitud, norma L2, repetibilidad y simetría del coseno. Se midieron carga desde caché, primera inferencia, ocho inferencias calientes, un lote de seis, memoria RSS y descarga inicial. DistilUSE requirió aplicar su proyección Dense para obtener sus 512 dimensiones correctas.
-2. **Pares etiquetados:** se compararon frases similares y no similares en español. La versión 2 separó 40 pares de calibración y 20 de holdout, equilibrados. Los umbrales se fijaron con calibración y se aplicaron al holdout sin modificarlos. Se ejecutó después un tercer holdout de pares para MiniLM y BGE-M3, también sin búsqueda en PostgreSQL. Estos ensayos muestran errores semánticos, pero una pareja aislada no prueba que se encuentre la frase correcta entre varias almacenadas.
-3. **Flujo completo:** se evaluaron MiniLM y BGE-M3 con [40 validaciones de calibración](../../experiments/semantic-similarity/data/flow/calibration.json) y [20 de holdout](../../experiments/semantic-similarity/data/flow/holdout.json), mitad con alerta esperada y mitad sin ella. Cada caso insertó tres frases activas en PostgreSQL, generó los embeddings del modelo, buscó la candidata más cercana con pgvector y aplicó el umbral del modelo. Los umbrales, el orden de desempate y los hashes de los conjuntos se fijaron antes de leer las decisiones del holdout. Calibración y holdout no comparten frases ni familias.
-4. **Costo y fallos:** se compararon los tiempos y la memoria observados. MiniLM cargó y produjo un vector finito con la red deshabilitada y la caché preparada; una caché vacía o incompleta produjo error. Las pruebas de fallos propagaron errores simulados de inferencia, búsqueda y timeout sin devolver una validación exitosa.
+**Métricas usadas**, explicadas en términos simples:
 
-La etiqueta positiva significa «conviene advertir de un posible duplicado para revisión humana». Incluye paráfrasis y cambios pequeños de detalle cuando se mantiene la acción y el asunto. Las acciones opuestas, negaciones que invierten el hecho e intenciones diferentes son negativas. Las etiquetas de la prueba del flujo constan como `labeled` y fueron redactadas para el experimento; no tienen revisión humana independiente.
+- **Accuracy (exactitud):** proporción de decisiones correctas sobre el total de casos evaluados.
+- **Precisión:** de las alertas que el modelo emitió, cuántas eran realmente un duplicado.
+- **Recall (sensibilidad):** de los duplicados que debían alertarse, cuántos el modelo efectivamente detectó.
+- **F1:** combina precisión y recall en un solo número, dándoles el mismo peso.
 
-**Métricas:** accuracy = decisiones correctas / total; precisión = alertas correctas / alertas emitidas; recall = alertas correctas / casos que debían alertarse. F1 combina precisión y recall con igual peso; F2 da más peso al recall. FP es una alerta indebida y FN un duplicado potencial sin alerta. El error de recuperación cuenta por separado los casos en que la primera frase hallada no es la candidata pertinente. El p95 es el tiempo por debajo del cual quedaron al menos el 95 % de las observaciones de la muestra.
+Un **falso positivo** es una alerta que no correspondía a un duplicado; un **falso negativo** es un duplicado real que no generó alerta. En este dominio, un falso negativo es el error más costoso para el usuario (un duplicado que pasa sin aviso).
 
-## 3. Viabilidad y costo local
+## 2. Modelos comparados y viabilidad
 
-Los cuatro candidatos iniciales produjeron vectores finitos, normalizados y de la dimensión esperada. Esta tabla corresponde a una corrida local en macOS `arm64`, Node.js `v22.12.0`, CPU, `q8`; cada modelo se midió en un proceso independiente. La latencia caliente procede de solo ocho repeticiones.
+Se compararon cuatro modelos multilingües que pueden ejecutarse en CPU:
 
-| Modelo | Dimensión | Mediana caliente | p95 caliente | RSS pico | Descarga observada |
+- **MiniLM** (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`): el más liviano, 384 dimensiones.
+- **E5-small** (`intfloat/multilingual-e5-small`): también liviano, 384 dimensiones.
+- **DistilUSE** (`sentence-transformers/distiluse-base-multilingual-cased-v2`): 512 dimensiones.
+- **BGE-M3** (`BAAI/bge-m3`): el más pesado, 1024 dimensiones.
+
+Los cuatro produjeron vectores válidos (sin valores inválidos, con la dimensión esperada). La siguiente tabla resume el costo de cada uno, medido en una corrida local (macOS, CPU, un modelo por proceso, ocho repeticiones para la latencia):
+
+| Modelo | Dimensión | Latencia mediana | Latencia p95 | Memoria pico | Descarga |
 |---|---:|---:|---:|---:|---:|
 | MiniLM | 384 | 2,85 ms | 6,07 ms | 690,6 MiB | 129,1 MiB |
 | E5-small | 384 | 3,77 ms | 7,65 ms | 684,0 MiB | 129,1 MiB |
 | DistilUSE | 512 | 13,57 ms | 15,87 ms | 510,1 MiB | 133,3 MiB |
 | BGE-M3 | 1024 | 18,76 ms | 20,70 ms | 1 806,6 MiB | 559,6 MiB |
 
-La carga desde caché tardó 394,4 ms para MiniLM y 615,8 ms para BGE-M3. La primera inferencia después de cargar tardó 7,44 ms y 28,61 ms, respectivamente. La primera descarga mezcló red e inicialización, por lo que no se usa como latencia normal de la aplicación. No se registraron el modelo exacto de CPU ni la memoria física del equipo.
+(El "p95" es el tiempo por debajo del cual estuvo el 95 % de las mediciones; sirve para ver el peor caso típico, no solo el promedio.)
 
-MiniLM también generó un embedding válido con el acceso remoto deshabilitado y la caché preparada. Si la caché estaba vacía o incompleta, la carga falló.
+MiniLM fue, de lejos, el más liviano y rápido; BGE-M3 fue el más costoso en memoria y descarga. MiniLM también generó un embedding válido con el acceso a internet deshabilitado (una vez con la caché del modelo ya preparada), lo que confirma que puede operar sin depender de red en cada arranque.
 
-## 4. Calidad semántica de pares
+## 3. Fase 1 — Resultados por pares de frases
 
-Los [pares v2 de calibración](../../experiments/semantic-similarity/data/v2/pairs.calibration.json) y [holdout](../../experiments/semantic-similarity/data/v2/pairs.holdout.json) contienen 40 y 20 casos, respectivamente. Las cifras siguientes usan los umbrales congelados antes del holdout. TP y TN son aciertos positivos y negativos.
+Se usó un conjunto de 40 pares de calibración y 20 de holdout, en español, balanceados entre pares similares y no similares. El umbral de cada modelo se fijó únicamente con el conjunto de calibración y se aplicó una sola vez al holdout, sin ajustarlo después.
 
-| Modelo | Umbral | Calibración | Holdout | TP | TN | FP | FN | Precisión | Recall | F1 | F2 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| MiniLM | 0,676399 | 31/40 (77,5 %) | 13/20 (65 %) | 7 | 6 | 4 | 3 | 63,6 % | 70 % | 66,7 % | 68,6 % |
-| BGE-M3 | 0,777859 | 33/40 (82,5 %) | 13/20 (65 %) | 8 | 5 | 5 | 2 | 61,5 % | 80 % | 69,6 % | 75,5 % |
+| Modelo | Umbral | Accuracy (holdout) | Precisión | Recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| MiniLM | 0,676399 | 65 % (13/20) | 63,6 % | 70 % | 66,7 % |
+| BGE-M3 | 0,777859 | 65 % (13/20) | 61,5 % | 80 % | 69,6 % |
 
-MiniLM y BGE-M3 empataron en aciertos del holdout v2. Compartieron falsos negativos en paráfrasis con vocabulario diferente y falsos positivos ante acciones opuestas. E5 y DistilUSE no superaron la meta histórica de calibración. Sus mejores puntos diagnósticos por F2 en los 40 pares v2 fueron:
+(En calibración, MiniLM acertó 31/40 y BGE-M3 33/40.)
 
-| Modelo | Umbral diagnóstico | Aciertos | TP | TN | FP | FN | Máxima accuracy al recorrer umbrales | Holdout v2 |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| E5-small | 0,892426 | 23/40 (57,5 %) | 20 | 3 | 17 | 0 | 65 % | No evaluado |
-| DistilUSE | 0,448537 | 22/40 (55 %) | 20 | 2 | 18 | 0 | 62,5 % | No evaluado |
+MiniLM y BGE-M3 empataron en accuracy de holdout; BGE-M3 tuvo algo más de recall a cambio de más falsos positivos. E5-small y DistilUSE también se probaron en este mismo conjunto, pero no alcanzaron el mínimo interno de 75 % de accuracy en calibración (ver sección 1), así que el pipeline no los promovió a holdout. Sus mejores resultados en calibración, con un umbral solo diagnóstico (no de producción):
 
-La máxima accuracy corresponde a otros cortes de umbral y no a las matrices de confusión mostradas. Granite y MPNet se exploraron después, sin una evaluación comparable del flujo completo. MPNet obtuvo 12/20 en un holdout de pares ya consultado por otros modelos, por lo que ese resultado es exploratorio.
+| Modelo | Umbral diagnóstico | Accuracy (calibración) | Precisión | Recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| E5-small | 0,892426 | 57,5 % | 54,1 % | 100 % | 70,2 % |
+| DistilUSE | 0,448537 | 55 % | 52,6 % | 100 % | 69 % |
 
-Antes de v2 se evaluó una primera definición de similitud. La definición de «posible duplicado» se amplió antes de crear y puntuar v2; por ello los resultados de ambas versiones no son mediciones comparables de una misma prueba.
+Por eso no tienen fila en la tabla de holdout ni se llevaron a la fase 2.
 
-| Conjunto de pares | Modelo | Umbral | Aciertos | TP | TN | FP | FN |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Holdout v1, definición inicial | MiniLM | 0,677256 | 10/20 (50 %) | 7 | 3 | 7 | 3 |
-| Holdout v3, definición ampliada | MiniLM | 0,676399 | 8/20 (40 %) | 6 | 2 | 8 | 4 |
-| Holdout v3, definición ampliada | BGE-M3 | 0,777859 | 10/20 (50 %) | 8 | 2 | 8 | 2 |
+## 4. Fase 2 — Resultados del flujo completo con PostgreSQL
 
-Los archivos v2 tienen SHA-256 `a6bf440a333347447727261c2754c1ab47c31a6fbcdbcfd2ec0792f1659901ff` (calibración) y `be474e2c5320a6aa2ecd934fddb1ad5a04b4f3b35727c8eb6eb1ae401d24a585` (holdout). Los umbrales exactos reutilizados en v3 figuran en la [configuración congelada](../../experiments/semantic-similarity/data/v3/holdout-freeze.json).
+Esta fase simula el caso real: por cada uno de 40 casos de calibración y 20 de holdout, se insertan tres frases "activas" en PostgreSQL, se genera el embedding de una frase nueva, se busca la candidata más parecida con pgvector y se aplica el umbral del modelo para decidir si alertar. La mitad de los casos de cada conjunto debía generar alerta y la otra mitad no. Calibración y holdout no comparten frases, y el umbral de cada modelo se fijó antes de leer los resultados del holdout.
 
-En el [tercer holdout de pares](../../experiments/semantic-similarity/data/v3/pairs.holdout.json) se conservaron los umbrales de calibración v2. Ambos modelos produjeron ocho falsos positivos sobre diez negativos; MiniLM no dominó todas las pruebas de calidad. Las etiquetas de este tercer conjunto tampoco tienen revisión humana independiente. Ninguno de estos holdouts de pares incluye recuperación desde PostgreSQL.
+Resultados sobre los 20 casos de holdout (10 con alerta esperada, 10 sin ella):
 
-El `0.6763989282227754` de MiniLM se obtuvo calibrando **pares predefinidos**. Es un resultado diagnóstico de esa prueba, no la configuración del MVP.
+| Modelo | Umbral | TP | TN | FP | FN | Accuracy | Precisión | Recall | F1 | p95 de `validate()` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MiniLM | 0,853861 | 2 | 10 | 0 | 8 | 60 % (12/20) | 100 % | 20 % | 33,3 % | 7,81 ms |
+| BGE-M3 | 0,922539 | 0 | 10 | 0 | 10 | 50 % (10/20) | — (0 alertas) | 0 % | — | 26,73 ms |
 
-## 5. Calidad del flujo con PostgreSQL
+(En calibración, MiniLM acertó 22/40 (55 %) y BGE-M3 20/40 (50 %).)
 
-El evaluador [`src/evaluate-flow-dataset.mjs`](../../experiments/semantic-similarity/src/evaluate-flow-dataset.mjs) probó búsqueda exacta con pgvector y decisión de alerta. En calibración examinó posibles cortes entre puntajes y eligió el de más decisiones correctas; los empates favorecieron menos FP, luego menos FN y finalmente el umbral más alto. El holdout reutilizó los umbrales congelados. La coincidencia textual normalizada tuvo prioridad y la búsqueda semántica usó coseno.
+En los 10 casos positivos del holdout, ambos modelos recuperaron la frase correcta como primera candidata: el problema no fue la búsqueda, sino el umbral de decisión. MiniLM alertó en 2 de los 10 positivos y dejó pasar 8; BGE-M3 no alertó en ninguno. Ningún modelo generó falsos positivos. MiniLM fue, además, unas 3,4 veces más rápido que BGE-M3 en esta prueba (`validate()` incluye buscar la frase, generar su embedding y comparar contra las tres frases activas ya indexadas; no incluye el recorrido HTTP completo de la API).
 
-| Fase y modelo | Umbral | Aciertos | TP | TN | FP | FN | Errores de recuperación | p95 de `validate` |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Calibración MiniLM | 0,853861 | 22/40 (55 %) | 5 | 17 | 3 | 15 | 2 | 18,33 ms |
-| Calibración BGE-M3 | 0,922539 | 20/40 (50 %) | 0 | 20 | 0 | 20 | 1 | 35,67 ms |
-| **Holdout MiniLM** | **0,853861** | **12/20 (60 %)** | **2** | **10** | **0** | **8** | **0** | **7,81 ms** |
-| Holdout BGE-M3 | 0,922539 | 10/20 (50 %) | 0 | 10 | 0 | 10 | 0 | 26,73 ms |
+BGE-M3 no alertó en ningún positivo no porque fallara la ejecución (recuperó bien los 10), sino porque su score de similitud en esos 10 casos fue 0,67–0,88, siempre por debajo de su propio umbral calibrado (0,922539). Con 0 alertas, precisión (TP/(TP+FP)) queda indefinida (0/0, por eso "—") y F1 también; recall sí se calcula (0/10 = 0 %) porque no depende de FP.
 
-Los umbrales exactos congelados para este flujo fueron `0.8538613695045911` (MiniLM) y `0.9225392213103117` (BGE-M3); la tabla los redondea solo para lectura.
+## 5. Decisión final
 
-**Por qué MiniLM tiene dos umbrales:** ambos usan similitud coseno; PostgreSQL no cambia por sí mismo la escala del puntaje. Cambiaron el conjunto de calibración y la tarea: en pares se clasificó una comparación conocida, mientras que en el flujo se eligió primero la mayor similitud entre tres frases activas y luego se decidió si alertar. Al optimizar aciertos sobre esos datos diferentes salieron cortes diferentes. Para el MVP se usará **`0.8538613695045911` como valor inicial configurable**, porque es el único de los dos evaluado en el flujo que implementará la aplicación. Esa elección conserva su limitación medida: 8 de 10 positivos no recibieron alerta.
+**Se elige MiniLM para implementar el MVP**, con el umbral inicial configurable **`0.8538613695045911`** (el evaluado en la fase 2).
 
-En los diez positivos del holdout ambos modelos recuperaron la frase pertinente como primera candidata. El problema principal fue **la decisión con el umbral**, no la recuperación: MiniLM advirtió en dos positivos y dejó pasar ocho; BGE-M3 no advirtió en ninguno. Los diez negativos no recibieron alerta con esos umbrales. Bajar un umbral usando este mismo holdout podría aumentar falsos positivos y no sería una evaluación independiente.
+Razones:
 
-Los tiempos de `validate` incluyen consulta de corpus, embedding de la frase nueva y búsqueda con el modelo ya cargado y tres frases indexadas. No incluyen HTTP, carga inicial, inserción, indexación ni guardado; no son tiempos de la API final. En esta muestra, MiniLM fue aproximadamente 3,4 veces más rápido por p95 que BGE-M3.
+- Generó embeddings válidos y es, de lejos, el más liviano y rápido de los cuatro candidatos.
+- Igualó o superó a BGE-M3 en el flujo completo con PostgreSQL (12/20 frente a 10/20 en el holdout), con una fracción del costo en tiempo y memoria.
+- E5-small y DistilUSE no mostraron ventaja de calidad sobre MiniLM en la fase 1 y no se probaron en el flujo completo por ese motivo.
 
-## 6. Decisión y consecuencia para el MVP
+Esta elección **no equivale a afirmar que el modelo tiene calidad suficiente para producción**. MiniLM quedó por debajo de la antigua meta del 75 % y, en el holdout del flujo, dejó pasar 8 de 10 duplicados reales (recall de 20 %). El umbral más bajo obtenido en la fase 1 (`0.6763989282227754`) no se adopta como valor inicial porque esa prueba no incluyó buscar entre varias frases, que es el caso real de uso. El MVP comunica las alertas como "posibles coincidencias" y deja la decisión final de guardar en manos del usuario.
 
-**Se elige MiniLM para implementar el MVP.** Generó embeddings correctos en Node.js, funcionó sin red con caché preparada, obtuvo más aciertos que BGE-M3 en el flujo probado (12/20 frente a 10/20) y exigió menos tiempo, memoria y descarga. E5 y DistilUSE fueron técnicamente viables, pero no mostraron una ventaja de calidad que justifique seleccionarlos; BGE-M3 rindió mejor en algunos pares, aunque con mayor costo y sin mejorar el flujo completo.
+## 6. Limitaciones y trabajo futuro
 
-La elección **no equivale a afirmar calidad suficiente para producción**. MiniLM quedó por debajo de la antigua meta del 75 % y dejó pasar ocho positivos del holdout del flujo con el umbral evaluado. Para no frenar el MVP, ese umbral probado se toma como **valor inicial configurable**; se elige por su trazabilidad en el flujo completo, no porque sea óptimo. El umbral menor de los ensayos de pares (`0.6763989282227754`) no se adopta como valor inicial porque esos resultados no incluyeron la búsqueda entre varias frases y el tercer holdout de pares produjo ocho falsos positivos de diez negativos. El MVP comunicará las alertas como posibles coincidencias y conservará la decisión de guardar en manos del usuario. La mejora del método o una nueva comparación de modelos se posponen hasta después de entregar el flujo funcional; requerirían datos nuevos para demostrar avance.
+- Los conjuntos de datos son pequeños (20-40 casos por fase) y las etiquetas fueron redactadas para el experimento, sin revisión humana independiente.
+- En el holdout de fase 2, los scores de BGE-M3 para positivos (0,67-0,88) y negativos (0,68-0,86) se solapan: bajar su umbral no lo arregla limpiamente, solo cambiaría falsos negativos por falsos positivos. MiniLM separó mejor en este holdout porque sus 2 verdaderos positivos más altos quedaron por casualidad por encima de todos sus negativos, no por una ventaja estructural del modelo.
+- La meta histórica de 75 % de accuracy ya no es una condición de entrega; no se repitieron pruebas para intentar alcanzarla.
+- Una vez consultado, un conjunto de holdout no debe reutilizarse para afirmar una mejora independiente: ajustar el umbral con los mismos datos ya vistos dejaría de ser una evaluación válida.
+- Queda pendiente, fuera de esta entrega, comparar más modelos, construir nuevos conjuntos de evaluación o revalidar el umbral con una muestra más grande antes de considerar el sistema listo para producción.

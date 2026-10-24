@@ -47,7 +47,7 @@ En pantallas pequeñas, las dos tarjetas principales y los ejemplos se apilan; d
 
 | Componente | Presentación y comportamiento previsto para el MVP |
 |---|---|
-| Campo «Frase en español» | Una sola línea, etiqueta visible, indicación de longitud y contador. Acepta 1–280 caracteres tras quitar espacios externos y exige al menos una letra. Ante error, muestra mensaje junto al campo; conserva el texto. |
+| Campo «Frase en español» | Una sola línea, etiqueta visible, indicación de longitud y contador. Acepta hasta 280 caracteres tras quitar espacios externos, exige al menos 3 letras y no admite emojis; la puntuación es válida. Ante error, muestra mensaje junto al campo; conserva el texto. |
 | **Validar** | Acción separada que inicia la comprobación y nunca guarda. Mientras se procesa, presenta «Validando…» y evita envíos duplicados. |
 | **Guardar** | Deshabilitado antes de una validación vigente, durante la validación, después de modificar el texto o tras un fallo de validación. Se habilita tras «primera frase» o «sin posible coincidencia». |
 | Resultado de coincidencia | Tarjeta ámbar con tipo, frase existente y puntaje. Presenta solo la candidata de mayor similitud. Una coincidencia textual indica 100 % y aclara que no intervino el modelo. |

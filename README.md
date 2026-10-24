@@ -29,9 +29,9 @@ flowchart LR
 ```
 
 Este diagrama refleja el **código actual**. Los documentos de `docs/03-architecture/`
-registran decisiones tomadas durante el diseño (algunas, como la forma exacta de
-ejecutar el modelo, cambiaron durante la implementación); úsalos para el detalle de
-decisiones, no como fuente de la topología vigente.
+fueron revisados para coincidir con el código implementado; los de `docs/00-discovery/`
+y `docs/01-ai-feasibility/` son registros históricos de decisión y llevan una nota
+cuando el código difiere. Ante cualquier discrepancia, manda el código.
 
 ### Flujo de validación y guardado (caso principal)
 
@@ -47,9 +47,13 @@ decisiones, no como fuente de la topología vigente.
 6. Si hay posible duplicado, el frontend muestra la alerta con el score y la frase
    parecida; el usuario confirma o cancela el guardado.
 7. Si el usuario confirma (o no había duplicado), el frontend llama a
-   `POST /api/v1/phrases` con el `validationId` recibido.
-8. El backend consume esa validación de forma atómica y persiste la frase,
-   reutilizando el embedding ya calculado (sin volver a llamar al modelo).
+   `POST /api/v1/phrases` con el `validationId` recibido y, cuando
+   `requiresConfirmation` es `true`, con `confirmed: true` (sin él, 409
+   `CONFIRMATION_REQUIRED`).
+8. El backend comprueba la validación (existe, vigente, no consumida, mismo texto
+   y modelo), inserta la frase reutilizando el embedding ya calculado (sin volver
+   a llamar al modelo) y después marca la validación como consumida. Son dos
+   escrituras secuenciales, sin transacción.
 
 ### Mapa de `docs/`
 
@@ -152,11 +156,11 @@ contexto del proyecto, no una certificación de calidad en producción.
 
 ## Variables de entorno
 
-| Ámbito                | Archivo                                                    | Contenido                                                                                             |
-| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Raíz / Docker Compose | [`.env.example`](.env.example)                             | Credenciales y puerto de PostgreSQL usados por `compose.yaml`                                         |
-| Backend               | [`apps/backend/.env.example`](apps/backend/.env.example)   | Conexión a PostgreSQL, URL del servicio de embeddings, modelo, umbral de similitud, TTL de validación |
-| Frontend              | [`apps/frontend/.env.example`](apps/frontend/.env.example) | URL base de la API                                                                                    |
+| Ámbito                | Archivo                                                    | Contenido                                                                                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Raíz / Docker Compose | [`.env.example`](.env.example)                             | Credenciales y puerto de PostgreSQL usados por `compose.yaml`                                                                                                                                                  |
+| Backend               | [`apps/backend/.env.example`](apps/backend/.env.example)   | `DATABASE_URL`, `PORT`, `AI_EMBEDDINGS_URL`, `AI_MODEL`, `AI_EMBEDDING_VERSION`, `AI_EMBEDDING_DIMENSIONS` (384), `AI_INFERENCE_TIMEOUT_MS`, `AI_SIMILARITY_THRESHOLD` y `PHRASE_VALIDATION_TTL_MINUTES` |
+| Frontend              | [`apps/frontend/.env.example`](apps/frontend/.env.example) | URL base de la API                                                                                                                                                                                             |
 
 Si cambias las credenciales en el `.env` raíz, recuerda actualizar también
 `DATABASE_URL` en `apps/backend/.env` para que sigan coincidiendo.
@@ -239,7 +243,8 @@ inventar, generado por el modelo contra la frase guardada en el paso 1):
 ## Tests
 
 ```sh
-cd apps/backend && pnpm test      # o pnpm test:cov
+cd apps/backend && pnpm test         # unitarias (o pnpm test:cov)
+cd apps/backend && pnpm test:e2e     # HTTP con puertos simulados (sin Postgres ni TEI)
 cd apps/frontend && pnpm test
 ```
 
@@ -251,12 +256,19 @@ Tests que cubren puntualmente el flujo de validación semántica + guardado (HIT
 ## Troubleshooting
 
 - **Puerto ocupado (`5432`, `8080`, `3000` o `5173`):** cambiar el puerto en el
-  `.env` correspondiente (`POSTGRES_PORT` en la raíz, `PORT` en el backend, o el
-  flag `--port` de Vite) o liberar el proceso que lo esté usando.
+  `.env` correspondiente (`POSTGRES_PORT` en la raíz —y `DATABASE_URL` del
+  backend—, `PORT` en el backend) o liberar el proceso que lo esté usando. El
+  `8080` de `embeddings` está fijo en `compose.yaml` (y debe coincidir con
+  `AI_EMBEDDINGS_URL`). El backend solo permite CORS desde
+  `http://localhost:5173`, así que cambiar el puerto de Vite exige tocar
+  `src/configure-app.ts`.
 - **`embeddings` tarda mucho en arrancar:** la primera descarga del modelo puede
   tardar varios minutos; revisar `docker compose logs -f embeddings` y esperar a
   que `/health` responda antes de levantar el backend.
-- **El backend no puede conectar a PostgreSQL o al servicio de embeddings:**
-  confirmar que `docker compose ps` muestra ambos servicios healthy y que
+- **El backend no arranca o no conecta a PostgreSQL / embeddings:** el backend
+  ejecuta una inferencia de comprobación al iniciar y termina con error si el
+  servicio `embeddings` no responde o si `AI_EMBEDDING_DIMENSIONS` no es `384`.
+  Confirmar que `docker compose ps` muestra `embeddings` healthy y `postgres` en
+  ejecución (solo `embeddings` define healthcheck) y que
   `DATABASE_URL`/`AI_EMBEDDINGS_URL` en `apps/backend/.env` coinciden con los
   puertos configurados en el `.env` raíz.

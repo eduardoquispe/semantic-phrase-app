@@ -40,7 +40,7 @@ npm run failure:offline
 npm test
 ```
 
-La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) resume la evidencia útil para el MVP. Las pruebas con PostgreSQL real y la aplicación final figuran en el [plan de ejecución](../../docs/01-ai-feasibility/experiment-plan.md).
+La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) resume la evidencia útil para el MVP, incluidas las pruebas con PostgreSQL real.
 
 ## Alcance de las métricas
 
@@ -67,7 +67,7 @@ La primera ejecución puede incluir descarga. Las siguientes reutilizan la cach�
 
 ## Evaluaciones anteriores de pares
 
-Los conjuntos y evaluadores de pares permanecen en `data/` y `src/`. Sus holdouts ya fueron consultados y no se reutilizarán para afirmar una mejora. La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) registra los resultados necesarios para elegir MiniLM en el MVP. La comparación de más modelos queda fuera del [plan de ejecución](../../docs/01-ai-feasibility/experiment-plan.md).
+Los conjuntos y evaluadores de pares permanecen en `data/` y `src/`. Sus holdouts ya fueron consultados y no se reutilizarán para afirmar una mejora. La [decisión de modelo](../../docs/01-ai-feasibility/model-decision.md) registra los resultados necesarios para elegir MiniLM en el MVP; la comparación de más modelos queda fuera de esta entrega.
 
 ## Prototipo del flujo con PostgreSQL y pgvector
 
