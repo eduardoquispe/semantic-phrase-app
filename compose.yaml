@@ -11,7 +11,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   embeddings:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9.4
     platform: linux/arm64
     command:
       - --model-id
